@@ -1,5 +1,5 @@
 import numpy as np
-import JacobiPolynomials
+# import JacobiPolynomials
 import scipy.special
 import timeit
 

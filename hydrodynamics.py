@@ -8,7 +8,7 @@ import TruncationBasis
 import matplotlib.pyplot as plt
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
 import copy
-from assumptions import ModelOptions
+from modeloptions import ModelOptions
 import define_weak_forms as weakforms
 from minusonepower import minusonepower
 import mesh_functions

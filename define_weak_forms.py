@@ -7,7 +7,7 @@ import geometry.geometries
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
 from netgen.geom2d import SplineGeometry
 import mesh_functions
-from assumptions import ModelOptions
+from modeloptions import ModelOptions
 from minusonepower import minusonepower
         
 ## Public functions that call other functions depending on the assumptions

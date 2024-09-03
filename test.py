@@ -5,7 +5,7 @@ import sympy
 from scipy.special import erf
 
 from hydrodynamics import Hydrodynamics
-from assumptions import ModelOptions
+from modeloptions import ModelOptions
 import boundary_fitted_coordinates
 from spatial_parameter import SpatialParameter
 from postprocessing import *

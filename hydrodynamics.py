@@ -1,6 +1,6 @@
 import ngsolve
 from ngsolve.solvers import *
-from ngsolve.la import IdentityMatrix, EigenValues_Preconditioner
+# from ngsolve.la import IdentityMatrix, EigenValues_Preconditioner
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg
@@ -8,7 +8,7 @@ import TruncationBasis
 import matplotlib.pyplot as plt
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
 import copy
-from assumptions import Assumptions
+from assumptions import ModelOptions
 import define_weak_forms as weakforms
 from minusonepower import minusonepower
 import mesh_functions
@@ -36,11 +36,11 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 class Hydrodynamics(object):
 
-    def __init__(self, mesh: ngsolve.Mesh, assumptions:Assumptions, qmax:int, M:int, order:int, 
+    def __init__(self, mesh: ngsolve.Mesh, model_options:ModelOptions, qmax:int, M:int, order:int, 
                  time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
         
         self.mesh = mesh
-        self.assumptions = assumptions
+        self.model_options = model_options
         self.qmax = qmax
         self.M = M
         self.num_equations = (2*M+3)*(2*qmax + 1)
@@ -49,8 +49,10 @@ class Hydrodynamics(object):
         self.vertical_basis = vertical_basis
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
+
         self._setup_fem_space()
         self.nfreedofs = count_free_dofs(self.femspace)
+
         self._setup_TnT()
         self._get_normalvec()
         
@@ -96,6 +98,10 @@ class Hydrodynamics(object):
     
 
     def _setup_TnT(self):
+
+
+        """Sorts the ngsolve Trial and Test functions into intuitive dictionaries"""
+
         trialtuple = self.femspace.TrialFunction()
         testtuple = self.femspace.TestFunction()
 
@@ -151,20 +157,23 @@ class Hydrodynamics(object):
 
         a_total = ngsolve.BilinearForm(self.femspace)
 
-        weakforms.add_bilinear_part(a_total, self.assumptions, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+        weakforms.add_bilinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                     self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.qmax,
                                     self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
                                     self.riverine_forcing.normal_alpha, forcing=True)
         if not skip_nonlinear:
-            weakforms.add_nonlinear_part(a_total, self.assumptions, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+            weakforms.add_nonlinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                          self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.qmax,
                                          self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
-                                         self.riverine_forcing.normal_alpha, advection_weighting_parameter, self.n)
+                                         self.riverine_forcing.normal_alpha, self.n)
         
         self.total_bilinearform = a_total
 
 
     def _restructure_solution(self):
+
+        """Associates each part of the solution gridfunction vector to a Fourier and vertical eigenfunction pair."""
+
         self.alpha_solution = [dict() for _ in range(self.M + 1)]
         self.beta_solution = [dict() for _ in range(self.M + 1)]
         self.gamma_solution = dict()
@@ -187,48 +196,48 @@ class Hydrodynamics(object):
             self.gamma_solution[q] = self.solution_gfu.components[2*(self.M+1)*(2*self.qmax+1) + self.qmax + q]
 
 
-    def _construct_velocities(self):
-        """Still dependent on precise form of orthogonal basis: FIX"""
-        self.u = dict()
-        self.v = dict()
-        self.w = dict()
+    # def _construct_velocities(self): # THIS FUNCTIONALITY IS PERFORMED BY postprocessing.py
+    #     """Still dependent on precise form of orthogonal basis: FIX"""
+    #     self.u = dict()
+    #     self.v = dict()
+    #     self.w = dict()
 
-        self.u[0] = sum([self.alpha_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-        self.v[0] = sum([self.beta_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
+    #     self.u[0] = sum([self.alpha_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
+    #     self.v[0] = sum([self.beta_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
 
-        for q in range(1, self.qmax + 1):
-            self.u[-q] = sum([self.alpha_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-            self.v[-q] = sum([self.beta_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-            self.u[q] = sum([self.alpha_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-            self.v[q] = sum([self.beta_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
+    #     for q in range(1, self.qmax + 1):
+    #         self.u[-q] = sum([self.alpha_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
+    #         self.v[-q] = sum([self.beta_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
+    #         self.u[q] = sum([self.alpha_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
+    #         self.v[q] = sum([self.beta_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
 
-        omegatilde = dict() # alternative vertical velocity in Burchard & Petersen (1997)
-        omegatilde[0] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
-            (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][0])[0] + ngsolve.grad(self.beta_solution[m][0])[1])
-            + self.alpha_solution[m][0] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][0] * self.spatial_physical_parameters['H'].gradient_cf[1])
-            * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
-        for m in range(self.M + 1)])
+    #     omegatilde = dict() # alternative vertical velocity in Burchard & Petersen (1997)
+    #     omegatilde[0] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
+    #         (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][0])[0] + ngsolve.grad(self.beta_solution[m][0])[1])
+    #         + self.alpha_solution[m][0] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][0] * self.spatial_physical_parameters['H'].gradient_cf[1])
+    #         * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
+    #     for m in range(self.M + 1)])
 
-        for q in range(1, self.qmax + 1):
-            omegatilde[-q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
-                (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][-q])[0] + ngsolve.grad(self.beta_solution[m][-q])[1])
-                + self.alpha_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[1])
-                * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
-            for m in range(self.M + 1)])
-            omegatilde[q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
-                (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][q])[0] + ngsolve.grad(self.beta_solution[m][q])[1])
-                + self.alpha_solution[m][q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][q] * self.spatial_physical_parameters['H'].gradient_cf[1])
-                * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
-            for m in range(self.M + 1)])
+    #     for q in range(1, self.qmax + 1):
+    #         omegatilde[-q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
+    #             (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][-q])[0] + ngsolve.grad(self.beta_solution[m][-q])[1])
+    #             + self.alpha_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[1])
+    #             * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
+    #         for m in range(self.M + 1)])
+    #         omegatilde[q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
+    #             (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][q])[0] + ngsolve.grad(self.beta_solution[m][q])[1])
+    #             + self.alpha_solution[m][q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][q] * self.spatial_physical_parameters['H'].gradient_cf[1])
+    #             * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
+    #         for m in range(self.M + 1)])
 
-        self.w[0] = self.spatial_physical_parameters['H'].cf * omegatilde[0] + self.u[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
-                    self.v[0] * self.spatial_physical_parameters['H'].gradient_cf[1]
+    #     self.w[0] = self.spatial_physical_parameters['H'].cf * omegatilde[0] + self.u[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
+    #                 self.v[0] * self.spatial_physical_parameters['H'].gradient_cf[1]
         
-        for q in range(1, self.qmax + 1):
-            self.w[-q] = self.spatial_physical_parameters['H'].cf * omegatilde[-q] + self.u[-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
-                    self.v[-q] * self.spatial_physical_parameters['H'].gradient_cf[1]
-            self.w[q] = self.spatial_physical_parameters['H'].cf * omegatilde[q] + self.u[q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
-                    self.v[q] * self.spatial_physical_parameters['H'].gradient_cf[1]
+    #     for q in range(1, self.qmax + 1):
+    #         self.w[-q] = self.spatial_physical_parameters['H'].cf * omegatilde[-q] + self.u[-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
+    #                 self.v[-q] * self.spatial_physical_parameters['H'].gradient_cf[1]
+    #         self.w[q] = self.spatial_physical_parameters['H'].cf * omegatilde[q] + self.u[q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
+    #                 self.v[q] * self.spatial_physical_parameters['H'].gradient_cf[1]
 
 
     def _construct_depth_averaged_velocities(self):
@@ -344,12 +353,12 @@ class Hydrodynamics(object):
         self._restructure_solution()
         forms_start = timeit.default_timer()
         a = ngsolve.BilinearForm(self.femspace)
-        weakforms.add_bilinear_part(a, self.assumptions, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+        weakforms.add_bilinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                     self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.qmax,
                                     self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
-                                    self.riverine_forcing.normal_alpha, forcing=False)
+                                    self.riverine_forcing.normal_alpha, forcing=True)
         if advection_weighting_parameter != 0:
-            weakforms.add_linearised_nonlinear_part(a, self.assumptions, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+            weakforms.add_linearised_nonlinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                                     self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.alpha_solution, self.beta_solution, self.gamma_solution,
                                                     self.M, self.qmax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
                                                     advection_weighting_parameter, self.n)
@@ -373,12 +382,12 @@ class Hydrodynamics(object):
         du = ngsolve.GridFunction(self.femspace)
         for i in range(self.femspace.dim):
             du.components[i].Set(0, ngsolve.BND) # homogeneous boundary conditions
-        if print_cond and method != 'gmres':
+        if print_cond and method != 'gmres': # CANT USE THIS OPTION RIGHT NOW; IT IS PROBABLY INACCURATE ANYWAY
             Idmat = ngsolve.Projector(mask=self.femspace.FreeDofs(), range=True)
 
-            abs_eigs = np.absolute(np.array(EigenValues_Preconditioner(a.mat, Idmat)))
+            # abs_eigs = np.absolute(np.array(EigenValues_Preconditioner(a.mat, Idmat)))
 
-            print(f'   Estimated condition number (2-norm) is {np.amax(abs_eigs)/np.amin(abs_eigs)}')
+            # print(f'   Estimated condition number (2-norm) is {np.amax(abs_eigs)/np.amin(abs_eigs)}')
 
         # Direct
         if method == 'umfpack' or method == 'pardiso':
@@ -398,9 +407,9 @@ class Hydrodynamics(object):
         # GMRes(a.mat, freedofs=self.femspace.FreeDofs(), x=du.vec, b=rhs)
         # Iterative
         if method == 'gmres':
-            if print_cond:
-                abs_eigs = np.absolute(np.array(EigenValues_Preconditioner(a.mat, prec)))
-                print(f'   Estimated preconditioned condition number (2-norm) is {np.amax(abs_eigs)/np.amin(abs_eigs)}')
+            # if print_cond: AGAIN, CANT USE THIS OPTION RIGHT NOW; IT IS PROBABLY INACCURATE ANYWAY
+                # abs_eigs = np.absolute(np.array(EigenValues_Preconditioner(a.mat, prec)))
+                # print(f'   Estimated preconditioned condition number (2-norm) is {np.amax(abs_eigs)/np.amin(abs_eigs)}')
             inversion_start = timeit.default_timer()
             GMRes(a.mat, pre=prec, x=du.vec, b=rhs)
             inversion_time = timeit.default_timer() - inversion_start
@@ -458,12 +467,8 @@ class Hydrodynamics(object):
               +f"components (including subtidal). In total, there are {(2*self.M + 3)*(2*self.qmax+1)} equations.\n"
               +f"\nAssumptions used:\n\n- Bed boundary condition: no slip\n- Rigid lid assumption\n- Eddy viscosity: constant\n- Density: depth-independent.\n\n")
         
-
-        self._setup_fem_space()
         
         print(f"Total number of free degrees of freedom: {self.nfreedofs}, so ~{self.nfreedofs / self.num_equations} free DOFs per equation.")
-
-        self._setup_TnT()
 
         # Set initial guess
         print(f"Setting initial guess\n")
@@ -516,7 +521,7 @@ class Hydrodynamics(object):
 
 class RiverineForcing(object):
 
-    def __init__(self, hydro: Hydrodynamics, discharge_amplitude_list, discharge_phase_list, is_constant=False):
+    def __init__(self, hydro: Hydrodynamics, discharge_amplitude_list, discharge_phase_list, is_constant=True): # Currently, only constant river discharge works
         
         self.discharge_amplitudes = discharge_amplitude_list
         self.discharge_phases = discharge_phase_list
@@ -548,7 +553,7 @@ class RiverineForcing(object):
         
         # Computation of normal components
 
-        if is_constant and hydro.assumptions.density == 'depth-independent':
+        if is_constant and hydro.model_options.density == 'depth-independent':
             d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
                   (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M+1)]
             d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
@@ -573,7 +578,7 @@ class RiverineForcing(object):
                     self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
                     self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
 
-        elif (not is_constant) and hydro.assumptions.density == 'depth-independent':
+        elif (not is_constant) and hydro.model_options.density == 'depth-independent':
 
             C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi*np.pi * \
                  (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
@@ -641,17 +646,17 @@ class SeawardForcing(object):
 
 
 def add_linear_part_to_bilinearform(hydro, a, forcing=True):
-    if hydro.assumptions.bed_bc == 'no_slip' and hydro.assumptions.density == 'depth-independent' and hydro.assumptions.eddy_viscosity_assumption == 'constant' and hydro.assumptions.rigid_lid:
+    if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
         add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, forcing)
 
 
 def add_nonlinear_part_to_bilinearform(hydro, a, advection_weighting_parameter):
-    if hydro.assumptions.bed_bc == 'no_slip' and hydro.assumptions.density == 'depth-independent' and hydro.assumptions.eddy_viscosity_assumption == 'constant' and hydro.assumptions.rigid_lid:
+    if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
         add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, advection_weighting_parameter)
 
 
 def add_linearised_nonlinear_part_to_bilinearform(hydro, a, alpha0, beta0, gamma0, advection_weighting_parameter):
-    if hydro.assumptions.bed_bc == 'no_slip' and hydro.assumptions.density == 'depth-independent' and hydro.assumptions.eddy_viscosity_assumption == 'constant' and hydro.assumptions.rigid_lid:
+    if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
         add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, alpha0, beta0, gamma0, advection_weighting_parameter)
 
 

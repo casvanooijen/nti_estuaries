@@ -114,8 +114,8 @@ class PostProcessing(object):
         self.gamma = lambda q : hydro.gamma_solution[q]
         self.gamma_abs = lambda q: ngsolve.sqrt(self.gamma(q)*self.gamma(q)) if q == 0 else ngsolve.sqrt(self.gamma(q)*self.gamma(q)+self.gamma(-q)*self.gamma(-q))
 
-        self.u_DA = hydro.u_DA
-        self.v_DA = hydro.v_DA
+        self.u_DA = lambda q: hydro.u_DA[q]
+        self.v_DA = lambda q: hydro.v_DA[q]
 
         self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
         self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
@@ -144,8 +144,8 @@ class PostProcessing(object):
         self.w_abs = lambda q, sigma : ngsolve.sqrt(self.w(q,sigma)*self.w(q,sigma)) if q == 0 else ngsolve.sqrt(self.w(q,sigma)*self.w(q,sigma)+self.w(-q,sigma)*self.w(-q,sigma))
         self.gamma_abs = lambda q : ngsolve.sqrt(self.gamma(q)*self.gamma(q)) if q == 0 else ngsolve.sqrt(self.gamma(q)*self.gamma(q)+self.gamma(-q)*self.gamma(-q)) 
         
-        self.u_DA_abs = lambda q: ngsolve.sqrt(self.u_DA[q]*self.u_DA[q] if q == 0 else ngsolve.sqrt(self.u_DA[q]*self.u_DA[q] + self.u_DA[-q]*self.u_DA[-q]))
-        self.v_DA_abs = lambda q: ngsolve.sqrt(self.v_DA[q]*self.v_DA[q] if q == 0 else ngsolve.sqrt(self.v_DA[q]*self.v_DA[q] + self.v_DA[-q]*self.v_DA[-q]))
+        self.u_DA_abs = lambda q: ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) if q == 0 else ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) + self.u_DA(-q)*self.u_DA(-q)))
+        self.v_DA_abs = lambda q: ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) if q == 0 else ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) + self.v_DA(-q)*self.v_DA(-q)))
 
         # Get derivative gridfunctions
 

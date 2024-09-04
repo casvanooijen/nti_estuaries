@@ -136,7 +136,7 @@ p2 = np.array([L/2,-B/2])
 postpro.plot_colormap(postpro.u_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal along-channel velocity", clabel="Velocity [m/s]")
 postpro.plot_colormap(postpro.v_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal cross-channel velocity", clabel="Velocity [m/s]")
 postpro.plot_colormap(postpro.gamma_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of semidiurnal surface elevation", clabel="Surface elevation [m]")
-postpro.plot_colormap(postpro.u_DA[0], refinement_level=4, show_mesh=False, title="Residual along-channel velocity", clabel="Velocity [m/s]", center_range=True, cmap='RdBu')
+postpro.plot_colormap(postpro.u_DA(0), refinement_level=4, show_mesh=False, title="Residual along-channel velocity", clabel="Velocity [m/s]", center_range=True, cmap='RdBu')
 
 postpro.plot_vertical_cross_section(lambda sig: postpro.u_abs(1, sig), "Amplitude of semidiurnal along-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
 postpro.plot_vertical_cross_section(lambda sig: postpro.v_abs(1, sig), "Amplitude of semidiurnal cross-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)

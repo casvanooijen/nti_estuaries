@@ -36,14 +36,14 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 class Hydrodynamics(object):
 
-    def __init__(self, mesh: ngsolve.Mesh, model_options:ModelOptions, qmax:int, M:int, order:int, 
+    def __init__(self, mesh: ngsolve.Mesh, model_options:ModelOptions, imax:int, M:int, order:int, 
                  time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
         
         self.mesh = mesh
         self.model_options = model_options
-        self.qmax = qmax
+        self.imax = imax
         self.M = M
-        self.num_equations = (2*M+3)*(2*qmax + 1)
+        self.num_equations = (2*M+1)*(2*imax + 1)
         self.order = order
         self.time_basis = time_basis
         self.vertical_basis = vertical_basis
@@ -80,8 +80,8 @@ class Hydrodynamics(object):
                                                     # need dirichlet=BOUNDARY_DICT[SEA], but anyway
         G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
 
-        list_of_spaces = [U for _ in range(2*(self.M + 1)*(2*self.qmax + 1))]
-        for _ in range(2*self.qmax+1):
+        list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
+        for _ in range(2*self.imax+1):
             list_of_spaces.append(G)
 
         X = ngsolve.FESpace(list_of_spaces) # tensor product of all spaces
@@ -105,43 +105,43 @@ class Hydrodynamics(object):
         trialtuple = self.femspace.TrialFunction()
         testtuple = self.femspace.TestFunction()
 
-        alpha_trialfunctions = [dict() for _ in range(self.M + 1)]
-        umom_testfunctions = [dict() for _ in range(self.M + 1)] # test functions for momentum equation u
+        alpha_trialfunctions = [dict() for _ in range(self.M)]
+        umom_testfunctions = [dict() for _ in range(self.M)] # test functions for momentum equation u
 
-        beta_trialfunctions = [dict() for _ in range(self.M + 1)]
-        vmom_testfunctions = [dict() for _ in range(self.M + 1)] # test functions for momentum equation v
+        beta_trialfunctions = [dict() for _ in range(self.M)]
+        vmom_testfunctions = [dict() for _ in range(self.M)] # test functions for momentum equation v
 
         gamma_trialfunctions = dict()
         DIC_testfunctions = dict() # test functions for Depth-Integrated Continuity equation
 
-        for m in range(self.M + 1):
-            alpha_trialfunctions[m][0] = trialtuple[m * (2*self.qmax + 1)]
-            umom_testfunctions[m][0] = testtuple[m * (2*self.qmax + 1)]
+        for m in range(self.M):
+            alpha_trialfunctions[m][0] = trialtuple[m * (2*self.imax + 1)]
+            umom_testfunctions[m][0] = testtuple[m * (2*self.imax + 1)]
 
-            beta_trialfunctions[m][0] = trialtuple[(self.M + 1 + m) * (2*self.qmax + 1)]
-            vmom_testfunctions[m][0] = testtuple[(self.M + 1 + m) * (2*self.qmax + 1)]
-            for q in range(1, self.qmax + 1):
-                alpha_trialfunctions[m][-q] = trialtuple[m * (2*self.qmax + 1) + q]
-                alpha_trialfunctions[m][q] = trialtuple[m * (2*self.qmax + 1) + self.qmax + q]
+            beta_trialfunctions[m][0] = trialtuple[(self.M + m) * (2*self.imax + 1)]
+            vmom_testfunctions[m][0] = testtuple[(self.M + m) * (2*self.imax + 1)]
+            for q in range(1, self.imax + 1):
+                alpha_trialfunctions[m][-q] = trialtuple[m * (2*self.imax + 1) + q]
+                alpha_trialfunctions[m][q] = trialtuple[m * (2*self.imax + 1) + self.imax + q]
 
-                umom_testfunctions[m][-q] = testtuple[m * (2*self.qmax + 1) + q]
-                umom_testfunctions[m][q] = testtuple[m * (2*self.qmax + 1) + self.qmax + q]
+                umom_testfunctions[m][-q] = testtuple[m * (2*self.imax + 1) + q]
+                umom_testfunctions[m][q] = testtuple[m * (2*self.imax + 1) + self.imax + q]
 
-                beta_trialfunctions[m][-q] = trialtuple[(self.M + 1 + m) * (2*self.qmax + 1) + q]
-                beta_trialfunctions[m][q] = trialtuple[(self.M + 1 + m) * (2*self.qmax + 1) + self.qmax + q]
+                beta_trialfunctions[m][-q] = trialtuple[(self.M + m) * (2*self.imax + 1) + q]
+                beta_trialfunctions[m][q] = trialtuple[(self.M + m) * (2*self.imax + 1) + self.imax + q]
 
-                vmom_testfunctions[m][-q] = testtuple[(self.M + 1 + m) * (2*self.qmax + 1) + q]
-                vmom_testfunctions[m][q] = testtuple[(self.M + 1 + m) * (2*self.qmax + 1) + self.qmax + q]
+                vmom_testfunctions[m][-q] = testtuple[(self.M + m) * (2*self.imax + 1) + q]
+                vmom_testfunctions[m][q] = testtuple[(self.M + m) * (2*self.imax + 1) + self.imax + q]
         
-        gamma_trialfunctions[0] = trialtuple[2*(self.M+1)*(2*self.qmax+1)]
-        DIC_testfunctions[0] = testtuple[2*(self.M+1)*(2*self.qmax+1)]
+        gamma_trialfunctions[0] = trialtuple[2*(self.M)*(2*self.imax+1)]
+        DIC_testfunctions[0] = testtuple[2*(self.M)*(2*self.imax+1)]
 
-        for q in range(1, self.qmax + 1):
-            gamma_trialfunctions[-q] = trialtuple[2*(self.M+1)*(2*self.qmax+1) + q]
-            gamma_trialfunctions[q] = trialtuple[2*(self.M+1)*(2*self.qmax+1) + self.qmax + q]
+        for q in range(1, self.imax + 1):
+            gamma_trialfunctions[-q] = trialtuple[2*(self.M)*(2*self.imax+1) + q]
+            gamma_trialfunctions[q] = trialtuple[2*(self.M)*(2*self.imax+1) + self.imax + q]
 
-            DIC_testfunctions[-q] = testtuple[2*(self.M+1)*(2*self.qmax+1) + q]
-            DIC_testfunctions[q] = testtuple[2*(self.M+1)*(2*self.qmax+1) + self.qmax + q]
+            DIC_testfunctions[-q] = testtuple[2*(self.M)*(2*self.imax+1) + q]
+            DIC_testfunctions[q] = testtuple[2*(self.M)*(2*self.imax+1) + self.imax + q]
 
         self.alpha_trialfunctions = alpha_trialfunctions
         self.umom_testfunctions = umom_testfunctions
@@ -158,12 +158,12 @@ class Hydrodynamics(object):
         a_total = ngsolve.BilinearForm(self.femspace)
 
         weakforms.add_bilinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-                                    self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.qmax,
+                                    self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
                                     self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
                                     self.riverine_forcing.normal_alpha, forcing=True)
         if not skip_nonlinear:
             weakforms.add_nonlinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.qmax,
+                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
                                          self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
                                          self.riverine_forcing.normal_alpha, self.n)
         
@@ -174,26 +174,26 @@ class Hydrodynamics(object):
 
         """Associates each part of the solution gridfunction vector to a Fourier and vertical eigenfunction pair."""
 
-        self.alpha_solution = [dict() for _ in range(self.M + 1)]
-        self.beta_solution = [dict() for _ in range(self.M + 1)]
+        self.alpha_solution = [dict() for _ in range(self.M)]
+        self.beta_solution = [dict() for _ in range(self.M)]
         self.gamma_solution = dict()
 
-        for m in range(self.M + 1):
-            self.alpha_solution[m][0] = self.solution_gfu.components[m * (2*self.qmax + 1)]
-            self.beta_solution[m][0] = self.solution_gfu.components[(self.M + 1 + m) * (2*self.qmax + 1)]
+        for m in range(self.M):
+            self.alpha_solution[m][0] = self.solution_gfu.components[m * (2*self.imax + 1)]
+            self.beta_solution[m][0] = self.solution_gfu.components[(self.M + m) * (2*self.imax + 1)]
             
-            for q in range(1, self.qmax + 1):
-                self.alpha_solution[m][-q] = self.solution_gfu.components[m * (2*self.qmax + 1) + q]
-                self.alpha_solution[m][q] = self.solution_gfu.components[m * (2*self.qmax + 1) + self.qmax + q]
+            for q in range(1, self.imax + 1):
+                self.alpha_solution[m][-q] = self.solution_gfu.components[m * (2*self.imax + 1) + q]
+                self.alpha_solution[m][q] = self.solution_gfu.components[m * (2*self.imax + 1) + self.imax + q]
 
-                self.beta_solution[m][-q] = self.solution_gfu.components[(self.M + 1 + m) * (2*self.qmax + 1) + q]
-                self.beta_solution[m][q] = self.solution_gfu.components[(self.M + 1 + m) * (2*self.qmax + 1) + self.qmax + q]
+                self.beta_solution[m][-q] = self.solution_gfu.components[(self.M + m) * (2*self.imax + 1) + q]
+                self.beta_solution[m][q] = self.solution_gfu.components[(self.M + m) * (2*self.imax + 1) + self.imax + q]
         
-        self.gamma_solution[0] = self.solution_gfu.components[2*(self.M+1)*(2*self.qmax+1)]
+        self.gamma_solution[0] = self.solution_gfu.components[2*(self.M)*(2*self.imax+1)]
 
-        for q in range(1, self.qmax + 1):
-            self.gamma_solution[-q] = self.solution_gfu.components[2*(self.M+1)*(2*self.qmax+1) + q]
-            self.gamma_solution[q] = self.solution_gfu.components[2*(self.M+1)*(2*self.qmax+1) + self.qmax + q]
+        for q in range(1, self.imax + 1):
+            self.gamma_solution[-q] = self.solution_gfu.components[2*(self.M)*(2*self.imax+1) + q]
+            self.gamma_solution[q] = self.solution_gfu.components[2*(self.M)*(2*self.imax+1) + self.imax + q]
 
 
     # def _construct_velocities(self): # THIS FUNCTIONALITY IS PERFORMED BY postprocessing.py
@@ -205,7 +205,7 @@ class Hydrodynamics(object):
     #     self.u[0] = sum([self.alpha_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
     #     self.v[0] = sum([self.beta_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
 
-    #     for q in range(1, self.qmax + 1):
+    #     for q in range(1, self.imax + 1):
     #         self.u[-q] = sum([self.alpha_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
     #         self.v[-q] = sum([self.beta_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
     #         self.u[q] = sum([self.alpha_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
@@ -218,7 +218,7 @@ class Hydrodynamics(object):
     #         * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
     #     for m in range(self.M + 1)])
 
-    #     for q in range(1, self.qmax + 1):
+    #     for q in range(1, self.imax + 1):
     #         omegatilde[-q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
     #             (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][-q])[0] + ngsolve.grad(self.beta_solution[m][-q])[1])
     #             + self.alpha_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[1])
@@ -233,7 +233,7 @@ class Hydrodynamics(object):
     #     self.w[0] = self.spatial_physical_parameters['H'].cf * omegatilde[0] + self.u[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
     #                 self.v[0] * self.spatial_physical_parameters['H'].gradient_cf[1]
         
-    #     for q in range(1, self.qmax + 1):
+    #     for q in range(1, self.imax + 1):
     #         self.w[-q] = self.spatial_physical_parameters['H'].cf * omegatilde[-q] + self.u[-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
     #                 self.v[-q] * self.spatial_physical_parameters['H'].gradient_cf[1]
     #         self.w[q] = self.spatial_physical_parameters['H'].cf * omegatilde[q] + self.u[q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
@@ -245,15 +245,15 @@ class Hydrodynamics(object):
         self.u_DA = dict()
         self.v_DA = dict()
 
-        self.u_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][0] for m in range(self.M + 1)])
-        self.v_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][0] for m in range(self.M + 1)])
+        self.u_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][0] for m in range(self.M)])
+        self.v_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][0] for m in range(self.M)])
 
-        for q in range(1, self.qmax + 1):
-            self.u_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][-q] for m in range(self.M + 1)])
-            self.u_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][q] for m in range(self.M + 1)])
+        for q in range(1, self.imax + 1):
+            self.u_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][-q] for m in range(self.M)])
+            self.u_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][q] for m in range(self.M)])
 
-            self.v_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][-q] for m in range(self.M + 1)])
-            self.v_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][q] for m in range(self.M + 1)])
+            self.v_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][-q] for m in range(self.M)])
+            self.v_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][q] for m in range(self.M)])
 
     # Public methods
 
@@ -354,13 +354,13 @@ class Hydrodynamics(object):
         forms_start = timeit.default_timer()
         a = ngsolve.BilinearForm(self.femspace)
         weakforms.add_bilinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-                                    self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.qmax,
+                                    self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
                                     self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
                                     self.riverine_forcing.normal_alpha, forcing=True)
         if advection_weighting_parameter != 0:
             weakforms.add_linearised_nonlinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                                     self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.alpha_solution, self.beta_solution, self.gamma_solution,
-                                                    self.M, self.qmax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
+                                                    self.M, self.imax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
                                                     advection_weighting_parameter, self.n)
             # add_linearised_nonlinear_part_to_bilinearform(self, a, self.alpha_solution, self.beta_solution, self.gamma_solution, advection_weighting_parameter)
         forms_time = timeit.default_timer() - forms_start
@@ -463,8 +463,8 @@ class Hydrodynamics(object):
     def solve(self, advection_weighting_parameter_list, skip_nonlinear=False, print_condition_number=False, autodiff=False, maxits=10, tol=1e-5, method='pardiso', return_testvalues=False):      
 
         # Set up FEM space
-        print(f"\nSetting up Finite Element Space for {'linear' if skip_nonlinear else f'{advection_weighting_parameter_list[0]}-non-linear'} simulation with {self.M+1} vertical modes and {self.qmax+1} harmonic\n"
-              +f"components (including subtidal). In total, there are {(2*self.M + 3)*(2*self.qmax+1)} equations.\n"
+        print(f"\nSetting up Finite Element Space for {'linear' if skip_nonlinear else f'{advection_weighting_parameter_list[0]}-non-linear'} simulation with {self.M} vertical modes and {self.imax+1} harmonic\n"
+              +f"components (including subtidal). In total, there are {(2*self.M + 1)*(2*self.imax+1)} equations.\n"
               +f"\nAssumptions used:\n\n- Bed boundary condition: no slip\n- Rigid lid assumption\n- Eddy viscosity: constant\n- Density: depth-independent.\n\n")
         
         
@@ -474,10 +474,10 @@ class Hydrodynamics(object):
         print(f"Setting initial guess\n")
 
         sol = ngsolve.GridFunction(self.femspace)
-        sol.components[2*(self.M+1)*(2*self.qmax+1)].Set(self.seaward_forcing.boundaryCFdict[0], ngsolve.BND)
-        for q in range(1, self.qmax + 1):
-            sol.components[2*(self.M+1)*(2*self.qmax+1) + q].Set(self.seaward_forcing.boundaryCFdict[-q], ngsolve.BND)
-            sol.components[2*(self.M+1)*(2*self.qmax+1) + self.qmax + q].Set(self.seaward_forcing.boundaryCFdict[q], ngsolve.BND)
+        sol.components[2*(self.M)*(2*self.imax+1)].Set(self.seaward_forcing.boundaryCFdict[0], ngsolve.BND)
+        for q in range(1, self.imax + 1):
+            sol.components[2*(self.M)*(2*self.imax+1) + q].Set(self.seaward_forcing.boundaryCFdict[-q], ngsolve.BND)
+            sol.components[2*(self.M)*(2*self.imax+1) + self.imax + q].Set(self.seaward_forcing.boundaryCFdict[q], ngsolve.BND)
 
         self.solution_gfu = sol
 
@@ -529,18 +529,18 @@ class RiverineForcing(object):
         self.is_constant = is_constant
 
         self.discharge_dict = dict() # Use a dictionary to enable negative indices
-        self.Q_vec = dict() # vector (\int_0^T Q h_p dt), p = -qmax, ..., qmax
+        self.Q_vec = dict() # vector (\int_0^T Q h_p dt), p = -imax, ..., imax
 
         # fill amplitude and phase lists with zeros for unfilled elements unless is_constant == True and create the vector Q_vec
 
         if not is_constant:
-            for _ in range(hydro.qmax + 1 - len(discharge_amplitude_list)):
+            for _ in range(hydro.imax + 1 - len(discharge_amplitude_list)):
                 self.discharge_amplitudes.append(0)
                 self.discharge_phases.append(0)
 
             self.discharge_dict[0] = self.discharge_amplitudes[0]
             self.Q_vec[0] = hydro.time_basis.inner_product(0, 0) * self.discharge_dict[0]
-            for i in range(1, hydro.qmax + 1):
+            for i in range(1, hydro.imax + 1):
                 self.discharge_dict[i] = self.discharge_amplitudes[i] * ngsolve.cos(self.discharge_phases[i])
                 self.discharge_dict[-i] = self.discharge_amplitudes[i] * ngsolve.sin(self.discharge_phases[i])
 
@@ -555,23 +555,23 @@ class RiverineForcing(object):
 
         if is_constant and hydro.model_options.density == 'depth-independent':
             d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M+1)]
+                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
             d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M+1)]
+                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
 
 
             C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi * np.pi * \
                  (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
-                    for k in range(hydro.M + 1)]
+                    for k in range(hydro.M)]
             
-            # sum_d1d2 = sum([d1[k]*d2[k] for k in range(hydro.M+1)])
-            sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M+1)])
+            # sum_d1d2 = sum([d1[k]*d2[k] for k in range(hydro.M)])
+            sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M)])
 
-            # self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M + 1)]
-            self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M + 1)]
-            self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M + 1)]
-            for m in range(hydro.M + 1):
-                for q in range(1, hydro.qmax + 1):
+            # self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
+            self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
+            self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M)]
+            for m in range(hydro.M):
+                for q in range(1, hydro.imax + 1):
                     self.normal_alpha[m][q] = 0
                     self.normal_alpha[m][-q] = 0
 
@@ -582,35 +582,35 @@ class RiverineForcing(object):
 
             C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi*np.pi * \
                  (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
-                    for k in range(hydro.M + 1)]
+                    for k in range(hydro.M)]
             
             d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M+1)]
+                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
             d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M+1)]
+                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
             
-            c1 = [[1 + 0.25*np.pi*np.pi*q*q*(4/(4*C[k]*C[k]-np.pi**2 * q**2)) for q in range(1, hydro.qmax + 1)] for k in range(hydro.M + 1)]
-            c2 = [[-0.5*np.pi*q*(4*C[k])/(4*C[k]*C[k] - np.pi**2 * q**2) for q in range(1, hydro.qmax + 1)] for k in range(hydro.M + 1)]
-            c3 = [[-0.5*np.pi*q/C[k] for q in range(1, hydro.qmax + 1)] for k in range(hydro.M + 1)]
-            c4 = [[4*C[k] / (4*C[k]*C[k]-np.pi*np.pi*q*q) for q in range(1, hydro.qmax + 1)] for k in range(hydro.M + 1)]
+            c1 = [[1 + 0.25*np.pi*np.pi*q*q*(4/(4*C[k]*C[k]-np.pi**2 * q**2)) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+            c2 = [[-0.5*np.pi*q*(4*C[k])/(4*C[k]*C[k] - np.pi**2 * q**2) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+            c3 = [[-0.5*np.pi*q/C[k] for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+            c4 = [[4*C[k] / (4*C[k]*C[k]-np.pi*np.pi*q*q) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
 
-            e1 = [-sum([d1[k]*d2[k]*c1[k][q-1] / C[k] for k in range(hydro.M + 1)]) for q in range(1, hydro.qmax + 1)]
-            e2 = [-sum([d1[k]*d2[k]*c2[k][q-1] / C[k] for k in range(hydro.M + 1)]) for q in range(1, hydro.qmax + 1)]
-            e3 = [-sum([d1[k]*d2[k]*c3[k][q-1] / c4[k][q-1] for k in range(hydro.M + 1)]) for q in range(1, hydro.qmax + 1)]
-            e4 = [-sum([d1[k]*d2[k] / c4[k][q-1] for k in range(hydro.M + 1)]) for q in range(1, hydro.qmax + 1)]
+            e1 = [-sum([d1[k]*d2[k]*c1[k][q-1] / C[k] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+            e2 = [-sum([d1[k]*d2[k]*c2[k][q-1] / C[k] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+            e3 = [-sum([d1[k]*d2[k]*c3[k][q-1] / c4[k][q-1] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+            e4 = [-sum([d1[k]*d2[k] / c4[k][q-1] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
 
             gamma = dict()
-            sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M + 1)])
+            sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M)])
             gamma[0] = -self.Q_vec[0] / sum_d1d2
 
-            for q in range(1, hydro.qmax + 1):
+            for q in range(1, hydro.imax + 1):
                 gamma[q] = e1[q-1] / (e4[q-1]*e1[q-1] - e3[q-1]) * (self.Q_vec[q] - (e3[q-1]/e1[q-1])*self.Q_vec[-q])
                 gamma[-q] = (self.Q_vec[-q] - e2[q-1]*gamma[q]) / e1[q-1]
 
-            self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M + 1)]
-            self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M + 1)]
-            for m in range(hydro.M + 1):
-                for q in range(1, hydro.qmax + 1):
+            self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
+            self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M)]
+            for m in range(hydro.M):
+                for q in range(1, hydro.imax + 1):
                     self.normal_alpha[m][q] = d1[m]*c3[m][q-1]*gamma[-q] / c4[m][q-1] + d2[m]*gamma[q] / c4[m][q-1]
                     self.normal_alpha[m][-q] = d1[m]*c1[m][q-1]*gamma[-q] / C[m] + d1[m]*c2[m][q-1]*gamma[q] / C[m]
 
@@ -631,13 +631,13 @@ class SeawardForcing(object):
         # Fill amplitudes and phases with zeros in the places where they are not prescribed
         self.amplitudes = amplitude_list
         self.phases = phase_list
-        for _ in range(self.hydro.qmax + 1 - len(amplitude_list)):
+        for _ in range(self.hydro.imax + 1 - len(amplitude_list)):
             self.amplitudes.append(0)
             self.phases.append(0)
 
         self.cfdict = {0: self.amplitudes[0]}
         self.boundaryCFdict = {0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[SEA]: self.cfdict[0]}, default=0)}
-        for i in range(1, self.hydro.qmax + 1):
+        for i in range(1, self.hydro.imax + 1):
             self.cfdict[i] = self.amplitudes[i] * ngsolve.cos(self.phases[i])
             self.cfdict[-i] = self.amplitudes[i] * ngsolve.sin(self.phases[i])
 
@@ -680,30 +680,30 @@ def add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolv
     # Depth-integrated continuity equation with homogeneous boundary conditions
     # if forcing:
     #     a += (0.5 / sig * hydro.DIC_testfunctions[0] * H * sum([G4(m) * \
-    #              normalalpha[m][0] for m in range(hydro.M + 1)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-    #     for r in range(1, hydro.qmax + 1):
+    #              normalalpha[m][0] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+    #     for r in range(1, hydro.imax + 1):
     #         a += (0.5 / sig * hydro.DIC_testfunctions[-r] * H * sum([G4(m) * \
-    #              normalalpha[m][-r] for m in range(hydro.M + 1)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+    #              normalalpha[m][-r] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
     #         a += (0.5 / sig * hydro.DIC_testfunctions[r] * H * sum([G4(m) * \
-    #              normalalpha[m][r] for m in range(hydro.M + 1)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+    #              normalalpha[m][r] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
     # r = 0 term
     a += (-0.5/sig * H * sum([G4(m) * (hydro.alpha_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[0] + 
-                                        hydro.beta_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[1]) for m in range(hydro.M + 1)])) * ngsolve.dx
+                                        hydro.beta_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[1]) for m in range(hydro.M)])) * ngsolve.dx
 
     # r != 0-terms
-    for r in range(1, hydro.qmax + 1):
+    for r in range(1, hydro.imax + 1):
         a += (ngsolve.pi*r*hydro.gamma_trialfunctions[r]*hydro.DIC_testfunctions[-r] - 0.5/sig*H*sum([G4(m) * (
             hydro.alpha_trialfunctions[m][-r] * ngsolve.grad(hydro.DIC_testfunctions[-r])[0] + 
             hydro.beta_trialfunctions[m][-r] * ngsolve.grad(hydro.DIC_testfunctions[-r])[1]
-        ) for m in range(hydro.M + 1)])) * ngsolve.dx
+        ) for m in range(hydro.M)])) * ngsolve.dx
         a += (ngsolve.pi*-r*hydro.gamma_trialfunctions[-r]*hydro.DIC_testfunctions[r] - 0.5/sig*H*sum([G4(m) * (
             hydro.alpha_trialfunctions[m][r] * ngsolve.grad(hydro.DIC_testfunctions[r])[0] + 
             hydro.beta_trialfunctions[m][r] * ngsolve.grad(hydro.DIC_testfunctions[r])[1]
-        ) for m in range(hydro.M + 1)])) * ngsolve.dx
+        ) for m in range(hydro.M)])) * ngsolve.dx
 
 
     # Momentum equations
-    for k in range(hydro.M + 1):
+    for k in range(hydro.M):
         # Add everything but the advective terms
         if forcing:
             a += (0.5*ngsolve.sqrt(2)/sig*G5(k) * H * H * hydro.alpha_testfunctions[k][0] * rho_x / rho) * ngsolve.dx # U-momentum
@@ -720,7 +720,7 @@ def add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolv
                 0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[0])[1] * hydro.beta_testfunctions[k][0]) * ngsolve.dx
         
         # r != 0-terms
-        for r in range(1, hydro.qmax + 1):
+        for r in range(1, hydro.imax + 1):
             # U-momentum
             a += ((0.5*ngsolve.pi*r*hydro.alpha_trialfunctions[k][r] *hydro.alpha_testfunctions[k][-r]- 
                     0.5/sig*Av*G3(k,k) * hydro.alpha_trialfunctions[k][-r]*hydro.alpha_testfunctions[k][-r] / H - 
@@ -752,7 +752,7 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
     H = hydro.spatial_physical_parameters['H'].cf
     
     normalalpha = hydro.riverine_forcing.normal_alpha
-    for k in range(hydro.M+1):
+    for k in range(hydro.M):
         
         # add nonlinear part of a
         # U-momentum
@@ -768,7 +768,7 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
                                                     hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])) * ngsolve.dx
             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-        ) for m in range(hydro.M + 1)]) for n in range(hydro.M + 1)]) for p in range(-hydro.qmax, hydro.qmax + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+        ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
         # V-momentum
         a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, 0) * (
             (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
@@ -782,9 +782,9 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
                                                     hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])) * ngsolve.dx
             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-        ) for m in range(hydro.M + 1)]) for n in range(hydro.M + 1)]) for p in range(-hydro.qmax, hydro.qmax + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+        ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-        for r in range(1, hydro.qmax + 1):
+        for r in range(1, hydro.imax + 1):
             # add nonlinear part of a
             # U-momentum component -r
             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
@@ -799,7 +799,7 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M + 1)]) for n in range(hydro.M + 1)]) for p in range(-hydro.qmax, hydro.qmax + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
             # U-momentum component +r
             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
                 (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
@@ -813,7 +813,7 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1])) * ngsolve.dx
             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M + 1)]) for n in range(hydro.M + 1)]) for p in range(-hydro.qmax, hydro.qmax + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
             # V-momentum component -r
             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
                 (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
@@ -827,7 +827,7 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])) * ngsolve.dx
             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M + 1)]) for n in range(hydro.M + 1)]) for p in range(-hydro.qmax, hydro.qmax + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
             # V-momentum component +r
             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
                 (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
@@ -841,7 +841,7 @@ def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngs
                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])) * ngsolve.dx
             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M + 1)]) for n in range(hydro.M + 1)]) for p in range(-hydro.qmax, hydro.qmax + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
 def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, alpha0, beta0, gamma0, advection_weighting_parameter=1):
     G1 = hydro.vertical_basis.tensor_dict['G1']
@@ -854,9 +854,9 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
     
     normalalpha = hydro.riverine_forcing.normal_alpha
 
-    for k in range(hydro.M + 1):
-        for p in range(-hydro.qmax, hydro.qmax + 1):
-            for q in range(-hydro.qmax, hydro.qmax + 1):
+    for k in range(hydro.M):
+        for p in range(-hydro.imax, hydro.imax + 1):
+            for q in range(-hydro.imax, hydro.imax + 1):
                 if H3_iszero(p, q, 0):
                     continue
                 else:
@@ -866,7 +866,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - \
                         H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + \
                                                                 beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])
-                    ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.dx
+                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
                         -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - \
@@ -876,7 +876,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                             ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
                         H * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
                                                             ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                    ) for n in range(hydro.M+1)])for m in range(hydro.M+1)]))*ngsolve.dx
+                    ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
                     # integration over seaward boundary for u-momentum
                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
                         H * alpha0[m][q] * hydro.alpha_testfunctions[k][0] * (
@@ -885,7 +885,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                         H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (
                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                         )
-                    ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
                         H * alpha0[m][q] * hydro.alpha_testfunctions[k][0] * (
                             hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
@@ -893,14 +893,14 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                         H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (
                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                         )
-                    ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                     # interior domain integration for v-momentum
                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
                         -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - \
                         H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + \
                                                                 beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])
-                    ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.dx
+                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
                         -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - \
@@ -910,7 +910,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                             ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
                         H * hydro.beta_testfunctions[k][0] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
                                                             ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
-                    ) for n in range(hydro.M+1)])for m in range(hydro.M+1)]))*ngsolve.dx
+                    ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
                     # integration over seaward boundary for v-momentum
                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
                         H * beta0[m][q] * hydro.beta_testfunctions[k][0] * (
@@ -919,7 +919,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                         H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (
                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                         )
-                    ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
                         H * beta0[m][q] * hydro.beta_testfunctions[k][0] * (
                             hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
@@ -927,12 +927,12 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                         H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (
                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                         )
-                    ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                             
                 # terms r != 0
-        for r in range(1, hydro.qmax + 1):
-            for p in range(-hydro.qmax, hydro.qmax + 1):
-                for q in range(-hydro.qmax, hydro.qmax + 1):
+        for r in range(1, hydro.imax + 1):
+            for p in range(-hydro.imax, hydro.imax + 1):
+                for q in range(-hydro.imax, hydro.imax + 1):
                     if H3_iszero(p, q, r):
                         continue
                     else:
@@ -943,7 +943,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - \
                             H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + \
                                                                     beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.dx
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
                             -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - \
@@ -953,7 +953,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                                 ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
                             H * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
                                                                 ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M+1)])for m in range(hydro.M+1)]))*ngsolve.dx
+                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
                         # integration over seaward boundary for u-momentum
                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][-r] * (
@@ -962,7 +962,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][-r] * (
                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
@@ -970,14 +970,14 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         # interior domain integration for v-momentum
                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - \
                             H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + \
                                                                     beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.dx
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - \
@@ -987,7 +987,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                                 ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
                             H * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
                                                                 ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M+1)])for m in range(hydro.M+1)]))*ngsolve.dx
+                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
                         # integration over seaward boundary for v-momentum
                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
                             H * beta0[m][q] * hydro.beta_testfunctions[k][-r] * (
@@ -996,7 +996,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
                             H * beta0[m][q] * hydro.beta_testfunctions[k][-r] * (
                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
@@ -1004,7 +1004,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
                         # terms +r
                         # interior domain integration for u-momentum
@@ -1013,7 +1013,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - \
                             H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + \
                                                                     beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1])
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.dx
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
                             -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - \
@@ -1023,7 +1023,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                                 ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
                             H * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
                                                                 ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M+1)])for m in range(hydro.M+1)]))*ngsolve.dx
+                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
                         # integration over seaward boundary for u-momentum
                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][r] * (
@@ -1032,7 +1032,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][r] * (
                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
@@ -1040,14 +1040,14 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         # interior domain integration for v-momentum
                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - \
                             H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + \
                                                                     beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.dx
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - \
@@ -1057,7 +1057,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                                                                 ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
                             H * hydro.beta_testfunctions[k][r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
                                                                 ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M+1)])for m in range(hydro.M+1)]))*ngsolve.dx
+                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
                         # integration over seaward boundary for v-momentum
                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
                             H * beta0[m][q] * hydro.beta_testfunctions[k][r] * (
@@ -1066,7 +1066,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
                             H * beta0[m][q] * hydro.beta_testfunctions[k][r] * (
                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
@@ -1074,7 +1074,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (
                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
                             )
-                        ) for n in range(hydro.M+1)]) for m in range(hydro.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
 # def _setup_forms_NS_DI_EVC_RL_linearisation(self, alpha0, beta0, gamma0, advection_weighting_parameter=1):
 #     G1 = self.vertical_basis.tensor_dict['G1']
@@ -1100,7 +1100,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                         self.beta_trialfunctions[m][0] * ngsolve.grad(self.DIC_testfunctions[0])[1]) for m in range(self.M + 1)])) * ngsolve.dx
 
 #     # r != 0-terms
-#     for r in range(1, self.qmax + 1):
+#     for r in range(1, self.imax + 1):
 #         a += (ngsolve.pi*r*self.gamma_trialfunctions[r]*self.DIC_testfunctions[-r] + 0.5/sig*H*sum([G4(m) * (
 #             self.alpha_trialfunctions[m][-r] * ngsolve.grad(self.DIC_testfunctions[-r])[0] + 
 #             self.beta_trialfunctions[m][-r] * ngsolve.grad(self.DIC_testfunctions[-r])[1]
@@ -1127,7 +1127,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                 0.5*g*H/sig * G4(k) * ngsolve.grad(self.gamma_trialfunctions[0])[1] * self.beta_testfunctions[k][0]) * ngsolve.dx
         
 #         # r != 0-terms
-#         for r in range(1, self.qmax + 1):
+#         for r in range(1, self.imax + 1):
 #             # U-momentum
 #             a += ((0.5*ngsolve.pi*abs(r)*self.alpha_trialfunctions[k][r] *self.alpha_testfunctions[k][-r]- 
 #                     0.5/sig*Av*G3(k,k) * self.alpha_trialfunctions[k][-r]*self.alpha_testfunctions[k][-r] / H - 
@@ -1152,8 +1152,8 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #         # Add linearised advective terms 
 #         # terms r = 0
 #         for k in range(self.M + 1):
-#             for p in range(-self.qmax, self.qmax + 1):
-#                 for q in range(-self.qmax, self.qmax + 1):
+#             for p in range(-self.imax, self.imax + 1):
+#                 for q in range(-self.imax, self.imax + 1):
 #                     if H3_iszero(p, q, 0):
 #                         continue
 #                     else:
@@ -1163,7 +1163,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                 self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][0])[1]) - \
 #                             H * self.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(self.alpha_testfunctions[k][0])[0] + \
 #                                                                     beta0[n][p] * ngsolve.grad(self.alpha_testfunctions[k][0])[1])
-#                         ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.dx
+#                         ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.dx
 #                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
 #                             -H * alpha0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][0])[0] + 
 #                                                 self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][0])[1]) - \
@@ -1173,7 +1173,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                                 ngsolve.grad(alpha0[m][q])[1] * self.beta_trialfunctions[n][p]) -
 #                             H * self.alpha_testfunctions[k][0] * (ngsolve.grad(self.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
 #                                                                 ngsolve.grad(self.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-#                         ) for n in range(self.M+1)])for m in range(self.M+1)]))*ngsolve.dx
+#                         ) for n in range(self.M)])for m in range(self.M)]))*ngsolve.dx
 #                         # integration over seaward boundary for u-momentum
 #                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
 #                             H * alpha0[m][q] * self.alpha_testfunctions[k][0] * (
@@ -1182,7 +1182,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                             H * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][0] * (
 #                                 alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                             )
-#                         ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
 #                             H * alpha0[m][q] * self.alpha_testfunctions[k][0] * (
 #                                 self.alpha_trialfunctions[n][p] * self.n[0] + self.beta_trialfunctions[n][p] * self.n[1]
@@ -1190,14 +1190,14 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                             H * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][0] * (
 #                                 alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                             )
-#                         ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                         # interior domain integration for v-momentum
 #                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
 #                             -H * beta0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[0] + 
 #                                                 self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[1]) - \
 #                             H * self.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[0] + \
 #                                                                     beta0[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[1])
-#                         ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.dx
+#                         ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.dx
 #                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
 #                             -H * beta0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[0] + 
 #                                                 self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[1]) - \
@@ -1207,7 +1207,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                                 ngsolve.grad(beta0[m][q])[1] * self.beta_trialfunctions[n][p]) -
 #                             H * self.beta_testfunctions[k][0] * (ngsolve.grad(self.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
 #                                                                 ngsolve.grad(self.beta_trialfunctions[m][q])[1] * beta0[n][p])
-#                         ) for n in range(self.M+1)])for m in range(self.M+1)]))*ngsolve.dx
+#                         ) for n in range(self.M)])for m in range(self.M)]))*ngsolve.dx
 #                         # integration over seaward boundary for v-momentum
 #                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
 #                             H * beta0[m][q] * self.beta_testfunctions[k][0] * (
@@ -1216,7 +1216,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                             H * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][0] * (
 #                                 alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                             )
-#                         ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
 #                             H * beta0[m][q] * self.beta_testfunctions[k][0] * (
 #                                 self.alpha_trialfunctions[n][p] * self.n[0] + self.beta_trialfunctions[n][p] * self.n[1]
@@ -1224,12 +1224,12 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                             H * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][0] * (
 #                                 alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                             )
-#                         ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                         
 #             # terms r != 0
-#             for r in range(1, self.qmax + 1):
-#                 for p in range(-self.qmax, self.qmax + 1):
-#                     for q in range(-self.qmax, self.qmax + 1):
+#             for r in range(1, self.imax + 1):
+#                 for p in range(-self.imax, self.imax + 1):
+#                     for q in range(-self.imax, self.imax + 1):
 #                         if H3_iszero(p, q, r):
 #                             continue
 #                         else:
@@ -1240,7 +1240,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[1]) - \
 #                                 H * self.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[0] + \
 #                                                                         beta0[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[1])
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.dx
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.dx
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
 #                                 -H * alpha0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[0] + 
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[1]) - \
@@ -1250,7 +1250,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                                     ngsolve.grad(alpha0[m][q])[1] * self.beta_trialfunctions[n][p]) -
 #                                 H * self.alpha_testfunctions[k][-r] * (ngsolve.grad(self.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
 #                                                                     ngsolve.grad(self.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-#                             ) for n in range(self.M+1)])for m in range(self.M+1)]))*ngsolve.dx
+#                             ) for n in range(self.M)])for m in range(self.M)]))*ngsolve.dx
 #                             # integration over seaward boundary for u-momentum
 #                             a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
 #                                 H * alpha0[m][q] * self.alpha_testfunctions[k][-r] * (
@@ -1259,7 +1259,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][-r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
 #                                 H * alpha0[m][q] * self.alpha_testfunctions[k][-r] * (
 #                                     self.alpha_trialfunctions[n][p] * self.n[0] + self.beta_trialfunctions[n][p] * self.n[1]
@@ -1267,14 +1267,14 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][-r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                             # interior domain integration for v-momentum
 #                             a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
 #                                 -H * beta0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[0] + 
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[1]) - \
 #                                 H * self.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[0] + \
 #                                                                         beta0[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[1])
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.dx
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.dx
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
 #                                 -H * beta0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[0] + 
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[1]) - \
@@ -1284,7 +1284,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                                     ngsolve.grad(beta0[m][q])[1] * self.beta_trialfunctions[n][p]) -
 #                                 H * self.beta_testfunctions[k][-r] * (ngsolve.grad(self.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
 #                                                                     ngsolve.grad(self.beta_trialfunctions[m][q])[1] * beta0[n][p])
-#                             ) for n in range(self.M+1)])for m in range(self.M+1)]))*ngsolve.dx
+#                             ) for n in range(self.M)])for m in range(self.M)]))*ngsolve.dx
 #                             # integration over seaward boundary for v-momentum
 #                             a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
 #                                 H * beta0[m][q] * self.beta_testfunctions[k][-r] * (
@@ -1293,7 +1293,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][-r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
 #                                 H * beta0[m][q] * self.beta_testfunctions[k][-r] * (
 #                                     self.alpha_trialfunctions[n][p] * self.n[0] + self.beta_trialfunctions[n][p] * self.n[1]
@@ -1301,7 +1301,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][-r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
 #                             # terms +r
 #                             # interior domain integration for u-momentum
@@ -1310,7 +1310,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][r])[1]) - \
 #                                 H * self.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(self.alpha_testfunctions[k][r])[0] + \
 #                                                                         beta0[n][p] * ngsolve.grad(self.alpha_testfunctions[k][r])[1])
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.dx
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.dx
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
 #                                 -H * alpha0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][r])[0] + 
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][r])[1]) - \
@@ -1320,7 +1320,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                                     ngsolve.grad(alpha0[m][q])[1] * self.beta_trialfunctions[n][p]) -
 #                                 H * self.alpha_testfunctions[k][r] * (ngsolve.grad(self.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
 #                                                                     ngsolve.grad(self.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-#                             ) for n in range(self.M+1)])for m in range(self.M+1)]))*ngsolve.dx
+#                             ) for n in range(self.M)])for m in range(self.M)]))*ngsolve.dx
 #                             # integration over seaward boundary for u-momentum
 #                             a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
 #                                 H * alpha0[m][q] * self.alpha_testfunctions[k][r] * (
@@ -1329,7 +1329,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
 #                                 H * alpha0[m][q] * self.alpha_testfunctions[k][r] * (
 #                                     self.alpha_trialfunctions[n][p] * self.n[0] + self.beta_trialfunctions[n][p] * self.n[1]
@@ -1337,14 +1337,14 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                             # interior domain integration for v-momentum
 #                             a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
 #                                 -H * beta0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[0] + 
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[1]) - \
 #                                 H * self.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[0] + \
 #                                                                         beta0[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[1])
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.dx
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.dx
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
 #                                 -H * beta0[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[0] + 
 #                                                     self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[1]) - \
@@ -1354,7 +1354,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                                     ngsolve.grad(beta0[m][q])[1] * self.beta_trialfunctions[n][p]) -
 #                                 H * self.beta_testfunctions[k][r] * (ngsolve.grad(self.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
 #                                                                     ngsolve.grad(self.beta_trialfunctions[m][q])[1] * beta0[n][p])
-#                             ) for n in range(self.M+1)])for m in range(self.M+1)]))*ngsolve.dx
+#                             ) for n in range(self.M)])for m in range(self.M)]))*ngsolve.dx
 #                             # integration over seaward boundary for v-momentum
 #                             a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
 #                                 H * beta0[m][q] * self.beta_testfunctions[k][r] * (
@@ -1363,7 +1363,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 #                             a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
 #                                 H * beta0[m][q] * self.beta_testfunctions[k][r] * (
 #                                     self.alpha_trialfunctions[n][p] * self.n[0] + self.beta_trialfunctions[n][p] * self.n[1]
@@ -1371,7 +1371,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                 H * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][r] * (
 #                                     alpha0[n][p] * self.n[0] + beta0[n][p] * self.n[1]
 #                                 )
-#                             ) for n in range(self.M+1)]) for m in range(self.M+1)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                             ) for n in range(self.M)]) for m in range(self.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
 #     return a
 # def _setup_forms_NS_DI_EVC_RL(self, advection_weighting_parameter=ngsolve.Parameter(1)):
@@ -1406,9 +1406,9 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #     a += (-0.5 / sig * H * sum([G4(m)*(self.alpha_trialfunctions[m][0] * ngsolve.grad(self.DIC_testfunctions[0])[0] + \
 #             self.beta_trialfunctions[m][0] * ngsolve.grad(self.DIC_testfunctions[0])[1]) for m in range(self.M + 1)])) * ngsolve.dx
     
-#     for r in range(1, self.qmax + 1):
-#         a += (-0.5/sig*self.DIC_testfunctions[-r]*H*sum([G4(m)*normalalpha[m][-r] for m in range(self.M+1)]))*ngsolve.ds(BOUNDARY_DICT[RIVER])
-#         a += (-0.5/sig*self.DIC_testfunctions[r]*H*sum([G4(m)*normalalpha[m][r] for m in range(self.M+1)]))*ngsolve.ds(BOUNDARY_DICT[RIVER])
+#     for r in range(1, self.imax + 1):
+#         a += (-0.5/sig*self.DIC_testfunctions[-r]*H*sum([G4(m)*normalalpha[m][-r] for m in range(self.M)]))*ngsolve.ds(BOUNDARY_DICT[RIVER])
+#         a += (-0.5/sig*self.DIC_testfunctions[r]*H*sum([G4(m)*normalalpha[m][r] for m in range(self.M)]))*ngsolve.ds(BOUNDARY_DICT[RIVER])
     
 #         a += (ngsolve.pi * r * self.gamma_trialfunctions[r] * self.DIC_testfunctions[-r] - \
 #             0.5/sig*H*sum([G4(m)*(self.alpha_trialfunctions[m][-r]*ngsolve.grad(self.DIC_testfunctions[-r])[0] + \
@@ -1457,7 +1457,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                         self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][0])[1])) * ngsolve.dx
 #                 + (H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 #                 + (H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][0] * (self.n[0]*self.alpha_trialfunctions[n][p] + self.n[1]*self.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-#             ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.qmax, self.qmax + 1)]) for q in range(-self.qmax, self.qmax + 1)])
+#             ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.imax, self.imax + 1)]) for q in range(-self.imax, self.imax + 1)])
 #             # V-momentum
 #             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, 0) * (
 #                 (-H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[0] + 
@@ -1471,12 +1471,12 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                         self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][0])[1])) * ngsolve.dx
 #                 + (H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 #                 + (H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][0] * (self.n[0]*self.alpha_trialfunctions[n][p] + self.n[1]*self.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-#             ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.qmax, self.qmax + 1)]) for q in range(-self.qmax, self.qmax + 1)])
+#             ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.imax, self.imax + 1)]) for q in range(-self.imax, self.imax + 1)])
 
 #         # Components r != 0
 #         forms_time_nonlinear += timeit.default_timer() - nonlinear_start
 
-#         for r in range(1, self.qmax + 1):
+#         for r in range(1, self.imax + 1):
 #             linear_start = timeit.default_timer()
 #             # add actually bilinear part of a
 #             # U-momentum component -r
@@ -1516,7 +1516,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                             self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
 #                 + (H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 #                 + (H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][-r] * (self.n[0]*self.alpha_trialfunctions[n][p] + self.n[1]*self.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.qmax, self.qmax + 1)]) for q in range(-self.qmax, self.qmax + 1)])
+#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.imax, self.imax + 1)]) for q in range(-self.imax, self.imax + 1)])
 #                 # U-momentum component +r
 #                 a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
 #                     (-H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][-r])[0] + 
@@ -1530,7 +1530,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                             self.beta_trialfunctions[n][p] * ngsolve.grad(self.alpha_testfunctions[k][r])[1])) * ngsolve.dx
 #                 + (H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 #                 + (H * advection_weighting_parameter * self.alpha_trialfunctions[m][q] * self.alpha_testfunctions[k][r] * (self.n[0]*self.alpha_trialfunctions[n][p] + self.n[1]*self.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.qmax, self.qmax + 1)]) for q in range(-self.qmax, self.qmax + 1)])
+#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.imax, self.imax + 1)]) for q in range(-self.imax, self.imax + 1)])
 #                 # V-momentum component -r
 #                 a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
 #                     (-H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[0] + 
@@ -1544,7 +1544,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                             self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][-r])[1])) * ngsolve.dx
 #                 + (H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 #                 + (H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][-r] * (self.n[0]*self.alpha_trialfunctions[n][p] + self.n[1]*self.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.qmax, self.qmax + 1)]) for q in range(-self.qmax, self.qmax + 1)])
+#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.imax, self.imax + 1)]) for q in range(-self.imax, self.imax + 1)])
 #                 # V-momentum component +r
 #                 a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
 #                     (-H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * (self.alpha_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[0] + 
@@ -1558,7 +1558,7 @@ def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynam
 #                                                             self.beta_trialfunctions[n][p] * ngsolve.grad(self.beta_testfunctions[k][r])[1])) * ngsolve.dx
 #                 + (H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 #                 + (H * advection_weighting_parameter * self.beta_trialfunctions[m][q] * self.beta_testfunctions[k][r] * (self.n[0]*self.alpha_trialfunctions[n][p] + self.n[1]*self.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.qmax, self.qmax + 1)]) for q in range(-self.qmax, self.qmax + 1)])
+#                 ) for m in range(self.M + 1)]) for n in range(self.M + 1)]) for p in range(-self.imax, self.imax + 1)]) for q in range(-self.imax, self.imax + 1)])
 #             forms_time_nonlinear += timeit.default_timer() - nonlinear_start
 #     self.total_bilinearform = a
 #     # self.total_linearform = linform

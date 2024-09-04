@@ -109,16 +109,16 @@ class PostProcessing(object):
         self.hydro = hydro
         self.onedimfemspace = ngsolve.H1(hydro.mesh, order=hydro.order)
 
-        self.u = lambda q, sigma : sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M + 1)])
-        self.v = lambda q, sigma : sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M + 1)])
+        self.u = lambda q, sigma : sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
+        self.v = lambda q, sigma : sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
         self.gamma = lambda q : hydro.gamma_solution[q]
         self.gamma_abs = lambda q: ngsolve.sqrt(self.gamma(q)*self.gamma(q)) if q == 0 else ngsolve.sqrt(self.gamma(q)*self.gamma(q)+self.gamma(-q)*self.gamma(-q))
 
         self.u_DA = hydro.u_DA
         self.v_DA = hydro.v_DA
 
-        self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax+1)])
-        self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+        self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
+        self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
         H = hydro.spatial_physical_parameters['H'].cf
         Hx = hydro.spatial_physical_parameters['H'].gradient_cf[0]
@@ -126,16 +126,16 @@ class PostProcessing(object):
 
         F = dict()
         F[0] = [H * (ngsolve.grad(hydro.alpha_solution[m][0])[0] + ngsolve.grad(hydro.beta_solution[m][0])[1]) + \
-                  hydro.alpha_solution[m][0] * Hx + hydro.beta_solution[m][0] * Hy for m in range(hydro.M + 1)]
-        for q in range(1, hydro.qmax + 1):
+                  hydro.alpha_solution[m][0] * Hx + hydro.beta_solution[m][0] * Hy for m in range(hydro.M)]
+        for q in range(1, hydro.imax + 1):
             F[-q] = [H * (ngsolve.grad(hydro.alpha_solution[m][-q])[0] + ngsolve.grad(hydro.beta_solution[m][-q])[1]) + \
-                        hydro.alpha_solution[m][-q] * Hx + hydro.beta_solution[m][-q] * Hy for m in range(hydro.M + 1)]
+                        hydro.alpha_solution[m][-q] * Hx + hydro.beta_solution[m][-q] * Hy for m in range(hydro.M)]
             F[q] = [H * (ngsolve.grad(hydro.alpha_solution[m][q])[0] + ngsolve.grad(hydro.beta_solution[m][q])[1]) + \
-                        hydro.alpha_solution[m][q] * Hx + hydro.beta_solution[m][q] * Hy for m in range(hydro.M + 1)]
+                        hydro.alpha_solution[m][q] * Hx + hydro.beta_solution[m][q] * Hy for m in range(hydro.M)]
             
-        self.w = lambda q, sigma : -sum([1/((m+0.5)*np.pi) * F[q][m] * (np.sin((m+0.5)*np.pi*sigma) + minusonepower(m) * np.ones_like(sigma)) for m in range(hydro.M + 1)]) + \
+        self.w = lambda q, sigma : -sum([1/((m+0.5)*np.pi) * F[q][m] * (np.sin((m+0.5)*np.pi*sigma) + minusonepower(m) * np.ones_like(sigma)) for m in range(hydro.M)]) + \
                                    sigma * self.u(q, sigma) * Hx + sigma * self.v(q, sigma) * Hy
-        self.w_timed = lambda t, sigma : sum([-sum([1/((m+0.5)*np.pi) * F[q][m] * (np.sin((m+0.5)*np.pi*sigma) + minusonepower(m) * np.ones_like(sigma)) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax)]) + \
+        self.w_timed = lambda t, sigma : sum([-sum([1/((m+0.5)*np.pi) * F[q][m] * (np.sin((m+0.5)*np.pi*sigma) + minusonepower(m) * np.ones_like(sigma)) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax)]) + \
                                          sigma * self.u_timed(t, sigma) * Hx + sigma * self.v_timed(t, sigma) * Hy
 
 
@@ -149,28 +149,28 @@ class PostProcessing(object):
 
         # Get derivative gridfunctions
 
-        self.ux = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M + 1)])
-        self.vx = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M + 1)])
+        self.ux = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
+        self.vx = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
         self.gammax = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0]
 
-        self.uy = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M + 1)])
-        self.vy = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M + 1)])
+        self.uy = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
+        self.vy = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
         self.gammay = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0]
 
-        self.usig = lambda q, sigma : sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M + 1)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H
-        self.vsig = lambda q, sigma : sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M + 1)]) #same
+        self.usig = lambda q, sigma : sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H
+        self.vsig = lambda q, sigma : sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #same
 
-        self.usigsig = lambda q, sigma: sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.second_derivative_evaluation_function(sigma, m) for m in range(hydro.M + 1)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H^2
-        self.vsigsig = lambda q, sigma: sum([hydro.beta_solution[m][q] * hydro.vertical_basis.second_derivative_evaluation_function(sigma, m) for m in range(hydro.M + 1)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H^2
+        self.usigsig = lambda q, sigma: sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.second_derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H^2
+        self.vsigsig = lambda q, sigma: sum([hydro.beta_solution[m][q] * hydro.vertical_basis.second_derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H^2
 
-        self.ux_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax+1)])
-        self.vx_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+        self.ux_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
+        self.vx_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-        self.uy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax+1)])
-        self.vy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+        self.uy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
+        self.vy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-        self.usig_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax+1)])
-        self.vsig_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M + 1)]) for q in range(-hydro.qmax, hydro.qmax + 1)])
+        self.usig_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
+        self.vsig_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
     ## PLOTTING ##
         

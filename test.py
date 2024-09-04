@@ -41,9 +41,9 @@ mesh = ngsolve.Mesh(geometry.GenerateMesh(maxh=maxh_global))
 
 # STEP 2: Set parameters =======================================================================================
 
-sem_order = 4 # order of the Spectral Element basis (Dubiner basis)
-M = 6 # amount of vertical basis functions to be projected on
-qmax = 1 # amount of tidal constituents in addition to subtidal flow
+sem_order = 6 # order of the Spectral Element basis (Dubiner basis)
+M = 7 # amount of vertical basis functions to be projected on
+imax = 1 # amount of tidal constituents in addition to subtidal flow
 
 
 # constant physical parameters
@@ -90,11 +90,11 @@ time_basis = harmonic_time_basis(sigma)
 
 # set options
 
-model_options = ModelOptions(bed_bc='no_slip', leading_order_surface=True, veddy_viscosity_assumption='constant', density='depth-independent', advection_epsilon=0.05)
+model_options = ModelOptions(bed_bc='no_slip', leading_order_surface=True, veddy_viscosity_assumption='constant', density='depth-independent', advection_epsilon=0)
 
 # create object
 
-hydro = Hydrodynamics(mesh, model_options, qmax, M, sem_order, time_basis, vertical_basis)
+hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f)
 hydro.set_spatial_physical_parameters(H_sp, rho_sp)
 
@@ -114,9 +114,9 @@ hydro.set_riverine_boundary_condition(discharge_amplitude_list, discharge_phase_
 
 # STEP 5: Solve the equations ===============================================================================
 
-advection_epsilon_list = [0.05] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
+advection_epsilon_list = [0] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
 
-hydro.solve(advection_epsilon_list, skip_nonlinear=False, maxits=10, tol=1e-9, method='pardiso')
+hydro.solve(advection_epsilon_list, skip_nonlinear=True, maxits=10, tol=1e-9, method='pardiso')
 
 
 # STEP 6: Postprocessing =====================================================================================
@@ -133,9 +133,10 @@ p2 = np.array([L/2,-B/2])
 
 
 # create plots
-postpro.plot_colormap(postpro.u_DA_abs(1), refinement_level=3, show_mesh=True, title="Amplitude of depth-averaged semidiurnal along-channel velocity", clabel="Velocity [m/s]")
-postpro.plot_colormap(postpro.v_DA_abs(1), refinement_level=3, show_mesh=True, title="Amplitude of depth-averaged semidiurnal cross-channel velocity", clabel="Velocity [m/s]")
-postpro.plot_colormap(postpro.gamma_abs(1), refinement_level=3, show_mesh=True, title="Amplitude of semidiurnal surface elevation", clabel="Surface elevation [m]")
+postpro.plot_colormap(postpro.u_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal along-channel velocity", clabel="Velocity [m/s]")
+postpro.plot_colormap(postpro.v_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal cross-channel velocity", clabel="Velocity [m/s]")
+postpro.plot_colormap(postpro.gamma_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of semidiurnal surface elevation", clabel="Surface elevation [m]")
+postpro.plot_colormap(postpro.u_DA[0], refinement_level=4, show_mesh=False, title="Residual along-channel velocity", clabel="Velocity [m/s]", center_range=True, cmap='RdBu')
 
 postpro.plot_vertical_cross_section(lambda sig: postpro.u_abs(1, sig), "Amplitude of semidiurnal along-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
 postpro.plot_vertical_cross_section(lambda sig: postpro.v_abs(1, sig), "Amplitude of semidiurnal cross-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)

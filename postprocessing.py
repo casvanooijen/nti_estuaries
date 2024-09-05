@@ -114,8 +114,8 @@ class PostProcessing(object):
         self.gamma = lambda q : hydro.gamma_solution[q]
         self.gamma_abs = lambda q: ngsolve.sqrt(self.gamma(q)*self.gamma(q)) if q == 0 else ngsolve.sqrt(self.gamma(q)*self.gamma(q)+self.gamma(-q)*self.gamma(-q))
 
-        self.u_DA = lambda q: hydro.u_DA[q]
-        self.v_DA = lambda q: hydro.v_DA[q]
+        self.u_DA = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.alpha_solution[m][q] for m in range(hydro.M)])
+        self.v_DA = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.beta_solution[m][q] for m in range(hydro.M)])
 
         self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
         self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])

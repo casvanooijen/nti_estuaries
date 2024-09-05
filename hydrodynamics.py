@@ -288,20 +288,20 @@ class Hydrodynamics(object):
     #                 self.v[q] * self.spatial_physical_parameters['H'].gradient_cf[1]
 
 
-    def _construct_depth_averaged_velocities(self):
+    # def _construct_depth_averaged_velocities(self):
 
-        self.u_DA = dict()
-        self.v_DA = dict()
+    #     self.u_DA = dict()
+    #     self.v_DA = dict()
 
-        self.u_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][0] for m in range(self.M)])
-        self.v_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][0] for m in range(self.M)])
+    #     self.u_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][0] for m in range(self.M)])
+    #     self.v_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][0] for m in range(self.M)])
 
-        for q in range(1, self.imax + 1):
-            self.u_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][-q] for m in range(self.M)])
-            self.u_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][q] for m in range(self.M)])
+    #     for q in range(1, self.imax + 1):
+    #         self.u_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][-q] for m in range(self.M)])
+    #         self.u_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][q] for m in range(self.M)])
 
-            self.v_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][-q] for m in range(self.M)])
-            self.v_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][q] for m in range(self.M)])
+    #         self.v_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][-q] for m in range(self.M)])
+    #         self.v_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][q] for m in range(self.M)])
 
     # Public methods
 
@@ -323,7 +323,7 @@ class Hydrodynamics(object):
         - options.txt:          contains the model options of the ModelOptions object, including which Fourier/vertical bases were used;
         - params.txt:           contains the SEM expansion basis order, M, imax and the constant physical parameters;
         - mesh.vol:             file that can be read by NGSolve to regenerate your mesh;
-        - sp_SPATIALPARAM.txt   files that contain GridFunctions of spatial parameter SPATIALPARAM; does not contain data that can regenerate the sympy function handle
+        - spatial_parameters:   folder that contain GridFunctions of spatial parameters; does not contain data that can regenerate the sympy function handle
                                 or NGSolve Coefficient Function;
         - solution.txt          file that contains the solution GridFunction;
 
@@ -696,7 +696,6 @@ def load_hydrodynamics(foldername):
     mesh_functions.load_basevector(hydro.solution_gfu.vec, f'{foldername}/solution.npy')
 
     hydro._restructure_solution()
-    hydro._construct_depth_averaged_velocities() # this is temporary; eventually, this is handled by the postprocessing object
 
     return hydro
 

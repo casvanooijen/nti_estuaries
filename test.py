@@ -4,8 +4,7 @@ import ngsolve
 import sympy
 from scipy.special import erf
 
-from hydrodynamics import Hydrodynamics
-from modeloptions import ModelOptions
+from hydrodynamics import Hydrodynamics, select_model_options
 import boundary_fitted_coordinates
 from spatial_parameter import SpatialParameter
 from postprocessing import *
@@ -90,7 +89,7 @@ time_basis = harmonic_time_basis(sigma)
 
 # set options
 
-model_options = ModelOptions(bed_bc='no_slip', leading_order_surface=True, veddy_viscosity_assumption='constant', density='depth-independent', advection_epsilon=0)
+model_options = select_model_options(bed_bc='no_slip', leading_order_surface=True, veddy_viscosity_assumption='constant', density='depth-independent', advection_epsilon=0)
 
 # create object
 
@@ -117,6 +116,7 @@ hydro.set_riverine_boundary_condition(discharge_amplitude_list, discharge_phase_
 advection_epsilon_list = [0] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
 
 hydro.solve(advection_epsilon_list, skip_nonlinear=True, maxits=10, tol=1e-9, method='pardiso')
+hydro.save('test_solution')
 
 
 # STEP 6: Postprocessing =====================================================================================

@@ -157,18 +157,47 @@ def get_boundaryelement_vertices(mesh: ngsolve.Mesh, bnd):
     return plist
 
 
-def save_gridfunction_to_txt(gfu: ngsolve.GridFunction, filename, **kwargs):
+def save_gridfunction(gfu: ngsolve.GridFunction, filename, format='npy'):
     gfu_vec_array = gfu.vec.FV().NumPy()
-    np.savetxt(filename, gfu_vec_array, **kwargs)
+    if format == 'npy':
+        np.save(filename, gfu_vec_array)
+    elif format == 'txt':
+        np.savetxt(filename, gfu_vec_array)
+    else:
+        raise ValueError(f"Invalid format {format}: please choose npy or txt")
 
 
-def set_basevector_from_txt(vec: ngsolve.BaseVector, filename, **kwargs):
-    array = np.genfromtxt(filename, **kwargs)
+# def save_gridfunction_to_txt(gfu: ngsolve.GridFunction, filename, **kwargs):
+#     gfu_vec_array = gfu.vec.FV().NumPy()
+#     np.savetxt(filename, gfu_vec_array, **kwargs)
+
+
+# def save_gridfunction_to_npy(gfu: ngsolve.GridFunction, filename):
+#     gfu_vec_array = gfu.vec.FV().NumPy()
+#     np.save(filename, gfu_vec_array)
+
+
+def load_basevector(vec: ngsolve.BaseVector, filename, format = 'npy'):
+    if format == 'npy':
+        array = np.load(filename)
+    elif format == 'txt':
+        array = np.genfromtxt(filename)
+    else:
+        raise ValueError(f"Invalid format {format}: please choose npy or txt")
+    
     vec.FV().NumPy()[:] = array
 
+# def set_basevector_from_txt(vec: ngsolve.BaseVector, filename, **kwargs):
+#     array = np.genfromtxt(filename, **kwargs)
+#     vec.FV().NumPy()[:] = array
 
-def set_basevector_from_NumPyArr(vec: ngsolve.BaseVector, arr):
-    vec.FV().NumPy()[:] = arr
+
+# def set_basevector_from_npy(vec: ngsolve.BaseVector, filename):
+#     array = np.load(filename)
+#     vec.FV().NumPy()[:] = array
+
+# def set_basevector_from_NumPyArr(vec: ngsolve.BaseVector, arr):
+#     vec.FV().NumPy()[:] = arr
 
 
 def get_dirichletdof_indices(freedofs: ngsolve.BitArray):

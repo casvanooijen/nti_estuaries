@@ -7,15 +7,14 @@ import geometry.geometries
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
 from netgen.geom2d import SplineGeometry
 import mesh_functions
-from modeloptions import ModelOptions
 from minusonepower import minusonepower
         
 ## Public functions that call other functions depending on the assumptions
         
-def add_bilinear_part(a: ngsolve.BilinearForm, model_options: ModelOptions, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions, 
+def add_bilinear_part(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions, 
                       umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax, constant_parameters: dict, spatial_parameters: dict, 
                       vertical_basis: TruncationBasis, normalalpha, forcing=True):
-    if model_options.bed_bc == 'no_slip' and model_options.leading_order_surface and model_options.veddy_viscosity_assumption == 'constant' and model_options.density == 'depth-independent':
+    if model_options['bed_bc'] == 'no_slip' and model_options['leading_order_surface'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
         return _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                                 umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax,
                                                 constant_parameters, spatial_parameters, vertical_basis, normalalpha, forcing)
@@ -23,27 +22,27 @@ def add_bilinear_part(a: ngsolve.BilinearForm, model_options: ModelOptions, alph
         print("Bilinear part of weak form was not set up")
 
 
-def add_nonlinear_part(a: ngsolve.BilinearForm, model_options: ModelOptions, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
+def add_nonlinear_part(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                        umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax,
                        constant_parameters, spatial_parameters, vertical_basis: TruncationBasis, 
                        time_basis: TruncationBasis, normalalpha, n):
-    if model_options.bed_bc == 'no_slip' and model_options.leading_order_surface and model_options.veddy_viscosity_assumption == 'constant' and model_options.density == 'depth-independent':
+    if model_options['bed_bc'] == 'no_slip' and model_options['leading_order_surface'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
         return _add_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                                 umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax,
-                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options.advection_epsilon, n)
+                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options['advection_epsilon'], n)
     else:
         print("Nonlinear part of weak form was not set up")
 
 
 
-def add_linearised_nonlinear_part(a: ngsolve.BilinearForm, model_options: ModelOptions, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
+def add_linearised_nonlinear_part(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                   umom_testfunctions, vmom_testfunctions, DIC_testfunctions, alpha0, beta0, gamma0, M, imax,
                                   constant_parameters, spatial_parameters, vertical_basis: TruncationBasis, 
                                   time_basis: TruncationBasis, normalalpha, advection_weighting_parameter, n):
-    if model_options.bed_bc == 'no_slip' and model_options.leading_order_surface and model_options.veddy_viscosity_assumption == 'constant' and model_options.density == 'depth-independent':
+    if model_options['bed_bc'] == 'no_slip' and model_options['leading_order_surface'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
         return _add_linearised_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                                 umom_testfunctions, vmom_testfunctions, DIC_testfunctions, alpha0, beta0, gamma0, M, imax,
-                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options.advection_epsilon, n)
+                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options['advection_epsilon'], n)
 ## Private functions that add the weak forms to the ngsolve.BilinearForm object
 
 def _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,

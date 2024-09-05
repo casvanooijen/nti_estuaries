@@ -1,20 +1,42 @@
-import ngsolve
-from ngsolve.solvers import *
-# from ngsolve.la import IdentityMatrix, EigenValues_Preconditioner
+# import ngsolve
+# from ngsolve.solvers import *
+# # from ngsolve.la import IdentityMatrix, EigenValues_Preconditioner
+# import numpy as np
+# import scipy.sparse as sp
+# import scipy.sparse.linalg
+# import os
+# import TruncationBasis
+# import matplotlib.pyplot as plt
+# from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
+# import copy
+# from modeloptions import ModelOptions
+# import define_weak_forms as weakforms
+# from minusonepower import minusonepower
+# import mesh_functions
+# import timeit
+# from ngsolve.solvers import GMRes
+# import pypardiso
+
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg
-import TruncationBasis
 import matplotlib.pyplot as plt
-from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
 import copy
-from modeloptions import ModelOptions
+import os
+import timeit
+import json
+
+import ngsolve
+from ngsolve.solvers import *
+import pypardiso
+
+import TruncationBasis
+from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
+
 import define_weak_forms as weakforms
 from minusonepower import minusonepower
 import mesh_functions
-import timeit
-from ngsolve.solvers import GMRes
-import pypardiso
+
 
 
 
@@ -31,12 +53,34 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
             vec[i] = 0.
 
 
+def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = True, veddy_viscosity_assumption:str = 'constant', density:str = 'depth-independent',
+                 advection_epsilon:float = 1):
+    
+    """Arguments: ('...'  means that there will possibly be future options added)
+        
+        - bed_bc:                       indicates what type of boundary condition is used at the river bed ('no_slip' or ...);
+        - leading_order_surface (bool): flag to indicate whether non-linear effects stemming from the varying water surface should be included;
+        - veddy_viscosity_assumption:   structure of the vertical eddy viscosity parameter ('constant' or ...);
+        - density:                      indicates what type of water density field is used ('depth-independent' or ...);
+        - advection_epsilon (float):    scalar by which the advective terms in the momentum equations are multiplied; if set to zero, advective terms are skipped;     
+                                        if set to one, advective terms are fully included;       
+        
+        """
+    
+    options = {
+            'bed_bc': bed_bc,
+            'leading_order_surface': leading_order_surface,
+            'veddy_viscosity_assumption': veddy_viscosity_assumption,
+            'density': density,
+            'advection_epsilon': advection_epsilon
+        }
 
+    return options
 
 
 class Hydrodynamics(object):
 
-    def __init__(self, mesh: ngsolve.Mesh, model_options:ModelOptions, imax:int, M:int, order:int, 
+    def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int, 
                  time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
         
         self.mesh = mesh
@@ -49,6 +93,10 @@ class Hydrodynamics(object):
         self.vertical_basis = vertical_basis
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
+        
+        self.loaded_from_files = False # flag that indicates whether the object is loaded from a saved solution; if it is, the spatial parameters are stored differently
+        if self.vertical_basis is TruncationBasis.eigbasis_constantAv: # not so pretty but it works
+            self.vertical_basis_name = "eigbasis_constantAv"
 
         self._setup_fem_space()
         self.nfreedofs = count_free_dofs(self.femspace)
@@ -204,7 +252,7 @@ class Hydrodynamics(object):
 
     #     self.u[0] = sum([self.alpha_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
     #     self.v[0] = sum([self.beta_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-
+  
     #     for q in range(1, self.imax + 1):
     #         self.u[-q] = sum([self.alpha_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
     #         self.v[-q] = sum([self.beta_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
@@ -257,16 +305,87 @@ class Hydrodynamics(object):
 
     # Public methods
 
-    def add_solution(self, filename):
-        self.solution_gfu = ngsolve.GridFunction(self.femspace)
-        mesh_functions.set_basevector_from_txt(self.solution_gfu.vec, filename)
-        self._restructure_solution()
-        # self._construct_velocities()
-        self._construct_depth_averaged_velocities()
+    # def add_solution(self, filename):
+    #     self.solution_gfu = ngsolve.GridFunction(self.femspace)
+    #     mesh_functions.set_basevector_from_txt(self.solution_gfu.vec, filename)
+    #     self._restructure_solution()
+    #     # self._construct_velocities()
+    #     self._construct_depth_averaged_velocities()
 
 
-    def save_solution(self, filename):
-        mesh_functions.save_gridfunction_to_txt(self.solution_gfu, filename)
+    # def save_solution(self, filename):
+    #     mesh_functions.save_gridfunction_to_txt(self.solution_gfu, filename)
+
+    def save(self, foldername):
+        """Saves the hydrodynamics object to a collection of files contained in a folder. Only possible if the Fourier/vertical bases are chosen from the predefined 
+        bases in TruncationBasis.py. The folder contains:
+        
+        - options.txt:          contains the model options of the ModelOptions object, including which Fourier/vertical bases were used;
+        - params.txt:           contains the SEM expansion basis order, M, imax and the constant physical parameters;
+        - mesh.vol:             file that can be read by NGSolve to regenerate your mesh;
+        - sp_SPATIALPARAM.txt   files that contain GridFunctions of spatial parameter SPATIALPARAM; does not contain data that can regenerate the sympy function handle
+                                or NGSolve Coefficient Function;
+        - solution.txt          file that contains the solution GridFunction;
+
+        """
+
+        os.makedirs(foldername, exist_ok=True)
+
+        # model options
+
+        options = {'vertical_basis_name': self.vertical_basis_name}
+        options.update(self.model_options)
+
+        f_options = open(f"{foldername}/options.json", 'x')
+        json.dump(options, f_options, indent=4)
+
+        # options_string = f"bed_bc:{self.model_options['bed_bc']}\nleading_order_surface:{self.model_options['leading_order_surface']}\n"+\
+        #                  f"veddy_viscosity_assumption:{self.model_options['veddy_viscosity_assumption']}\ndensity:{self.model_options['density']}\n"+\
+        #                  f"advection_epsilon:{self.model_options['advection_epsilon']}\nvertical_basis_name:{self.vertical_basis_name}"
+        
+        # f_options = open(f"{foldername}/options.txt", 'x')
+        # f_options.write(options_string)
+        # f_options.close()
+
+        # constant parameters
+
+        params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax}
+        params.update(self.constant_physical_parameters)
+
+        f_params = open(f"{foldername}/params.json", 'x')
+        json.dump(params, f_params, indent=4)
+
+        # params_string = f"sem_order:{self.order}\nM:{self.M}\nimax:{self.imax}"
+        # for name, value in self.constant_physical_parameters.items():
+        #     params_string += f"\n{name}:{value}"
+        
+        # f_params = open(f"{foldername}/params.txt", 'x')
+        # f_params.write(params_string)
+        # f_params.close()
+
+        # mesh
+
+        self.mesh.ngmesh.Save(f'{foldername}/mesh.vol') # save the netgen mesh
+
+        # spatial parameters
+
+        os.makedirs(f'{foldername}/spatial_parameters')
+
+        for name, value in self.spatial_physical_parameters.items():
+            oneDfemspace = ngsolve.H1(self.mesh, order = self.order)
+            gf = ngsolve.GridFunction(oneDfemspace)
+            gf.Set(value.cf)
+
+            mesh_functions.save_gridfunction(gf, f"{foldername}/spatial_parameters/{name}")
+
+        # solution
+
+        mesh_functions.save_gridfunction(self.solution_gfu, f"{foldername}/solution")
+
+
+
+
+
 
     def set_constant_physical_parameters(self, Av=None, sigma=None, T=None, g=None, f=None):
         if Av is not None:
@@ -462,6 +581,10 @@ class Hydrodynamics(object):
 
     def solve(self, advection_weighting_parameter_list, skip_nonlinear=False, print_condition_number=False, autodiff=False, maxits=10, tol=1e-5, method='pardiso', return_testvalues=False):      
 
+        if self.loaded_from_files:
+            print("Unable to solve: this Hydrodynamics object was loaded from files and can only be used for postprocessing")
+            return
+
         # Set up FEM space
         print(f"\nSetting up Finite Element Space for {'linear' if skip_nonlinear else f'{advection_weighting_parameter_list[0]}-non-linear'} simulation with {self.M} vertical modes and {self.imax+1} harmonic\n"
               +f"components (including subtidal). In total, there are {(2*self.M + 1)*(2*self.imax+1)} equations.\n"
@@ -515,7 +638,67 @@ class Hydrodynamics(object):
             return resnorm, invtime
         
 
+def load_hydrodynamics(foldername):
+    """Creates a Hydrodynamics object from a folder generated by the save-method of the Hydrodynamics object. This object can *only* be used for postprocessing.
     
+    Arguments:
+        - foldername:       name of the folder the data may be found in
+        
+    """
+
+    # options
+
+    f_options = open(f'{foldername}/options.json', 'r')
+    model_options: dict = json.load(f_options)
+    
+    vertical_basis_name = model_options.pop('vertical_basis_name')
+
+    if vertical_basis_name == 'eigbasis_constantAv':
+        vertical_basis = TruncationBasis.eigbasis_constantAv
+    else:
+        raise ValueError(f"Could not load hydrodynamics object: vertical basis name {model_options['vertical_basis_name']} invalid.")
+    
+    # params
+
+    f_params = open(f'{foldername}/params.json', 'r')
+    params: dict = json.load(f_params)
+
+    sem_order = params.pop('sem_order')
+    M = params.pop('M')
+    imax = params.pop('imax')
+    # the remainder of this dict constitutes the constant physical parameters of the simulation
+
+    time_basis = TruncationBasis.harmonic_time_basis(params['sigma']) # only this particular Fourier basis is supported
+
+    # mesh
+
+    mesh = ngsolve.Mesh(f'{foldername}/mesh.vol')
+
+    # Make Hydrodynamics object
+    hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
+    hydro.loaded_from_files = True
+    
+    # add spatial parameters
+    hydro.spatial_physical_parameters = dict()
+
+    for param in os.listdir(f'{foldername}/spatial_parameters'):
+        filename = os.fsdecode(param)
+        param_name = filename[:-4] # ignore file extension
+
+        oneDfemspace = ngsolve.H1(mesh, order = sem_order)
+        gf = ngsolve.GridFunction(oneDfemspace)
+        mesh_functions.load_basevector(gf.vec, f'{foldername}/spatial_parameters/{filename}')
+
+        hydro.spatial_physical_parameters[param_name] = gf
+
+    # add solution
+    hydro.solution_gfu = ngsolve.GridFunction(hydro.femspace)
+    mesh_functions.load_basevector(hydro.solution_gfu.vec, f'{foldername}/solution.npy')
+
+    hydro._restructure_solution()
+    hydro._construct_depth_averaged_velocities() # this is temporary; eventually, this is handled by the postprocessing object
+
+    return hydro
 
 
 
@@ -553,7 +736,7 @@ class RiverineForcing(object):
         
         # Computation of normal components
 
-        if is_constant and hydro.model_options.density == 'depth-independent':
+        if is_constant and hydro.model_options['density'] == 'depth-independent':
             d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
                   (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
             d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
@@ -578,7 +761,7 @@ class RiverineForcing(object):
                     self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
                     self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
 
-        elif (not is_constant) and hydro.model_options.density == 'depth-independent':
+        elif (not is_constant) and hydro.model_options['density'] == 'depth-independent':
 
             C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi*np.pi * \
                  (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
@@ -616,9 +799,7 @@ class RiverineForcing(object):
 
                     self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][q]}, default=0)
                     self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][-q]}, default=0)
-
-
-            
+        
 
 
 class SeawardForcing(object):
@@ -645,436 +826,436 @@ class SeawardForcing(object):
             self.boundaryCFdict[-i] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[SEA]: self.cfdict[-i]}, default=0)
 
 
-def add_linear_part_to_bilinearform(hydro, a, forcing=True):
-    if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
-        add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, forcing)
+# def add_linear_part_to_bilinearform(hydro, a, forcing=True):
+#     if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
+#         add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, forcing)
 
 
-def add_nonlinear_part_to_bilinearform(hydro, a, advection_weighting_parameter):
-    if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
-        add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, advection_weighting_parameter)
+# def add_nonlinear_part_to_bilinearform(hydro, a, advection_weighting_parameter):
+#     if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
+#         add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, advection_weighting_parameter)
 
 
-def add_linearised_nonlinear_part_to_bilinearform(hydro, a, alpha0, beta0, gamma0, advection_weighting_parameter):
-    if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
-        add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, alpha0, beta0, gamma0, advection_weighting_parameter)
+# def add_linearised_nonlinear_part_to_bilinearform(hydro, a, alpha0, beta0, gamma0, advection_weighting_parameter):
+#     if hydro.model_options.bed_bc == 'no_slip' and hydro.model_options.density == 'depth-independent' and hydro.model_options.veddy_viscosity_assumption == 'constant' and hydro.model_options.leading_order_surface:
+#         add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro, a, alpha0, beta0, gamma0, advection_weighting_parameter)
 
 
-def add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, forcing=True):
-    G3 = hydro.vertical_basis.tensor_dict['G3']
-    G4 = hydro.vertical_basis.tensor_dict['G4']
-    G5 = hydro.vertical_basis.tensor_dict['G5']
+# def add_linear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, forcing=True):
+#     G3 = hydro.vertical_basis.tensor_dict['G3']
+#     G4 = hydro.vertical_basis.tensor_dict['G4']
+#     G5 = hydro.vertical_basis.tensor_dict['G5']
 
-    sig = hydro.constant_physical_parameters['sigma']
-    Av = hydro.constant_physical_parameters['Av']
-    f = hydro.constant_physical_parameters['f']
-    g = hydro.constant_physical_parameters['g']
+#     sig = hydro.constant_physical_parameters['sigma']
+#     Av = hydro.constant_physical_parameters['Av']
+#     f = hydro.constant_physical_parameters['f']
+#     g = hydro.constant_physical_parameters['g']
 
-    H = hydro.spatial_physical_parameters['H'].cf
-    rho = hydro.spatial_physical_parameters['density'].cf
-    rho_x = hydro.spatial_physical_parameters['density'].gradient_cf[0]
-    rho_y = hydro.spatial_physical_parameters['density'].gradient_cf[1]
+#     H = hydro.spatial_physical_parameters['H'].cf
+#     rho = hydro.spatial_physical_parameters['density'].cf
+#     rho_x = hydro.spatial_physical_parameters['density'].gradient_cf[0]
+#     rho_y = hydro.spatial_physical_parameters['density'].gradient_cf[1]
 
-    normalalpha = hydro.riverine_forcing.normal_alpha
+#     normalalpha = hydro.riverine_forcing.normal_alpha
 
-    # Depth-integrated continuity equation with homogeneous boundary conditions
-    # if forcing:
-    #     a += (0.5 / sig * hydro.DIC_testfunctions[0] * H * sum([G4(m) * \
-    #              normalalpha[m][0] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-    #     for r in range(1, hydro.imax + 1):
-    #         a += (0.5 / sig * hydro.DIC_testfunctions[-r] * H * sum([G4(m) * \
-    #              normalalpha[m][-r] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-    #         a += (0.5 / sig * hydro.DIC_testfunctions[r] * H * sum([G4(m) * \
-    #              normalalpha[m][r] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-    # r = 0 term
-    a += (-0.5/sig * H * sum([G4(m) * (hydro.alpha_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[0] + 
-                                        hydro.beta_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[1]) for m in range(hydro.M)])) * ngsolve.dx
+#     # Depth-integrated continuity equation with homogeneous boundary conditions
+#     # if forcing:
+#     #     a += (0.5 / sig * hydro.DIC_testfunctions[0] * H * sum([G4(m) * \
+#     #              normalalpha[m][0] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#     #     for r in range(1, hydro.imax + 1):
+#     #         a += (0.5 / sig * hydro.DIC_testfunctions[-r] * H * sum([G4(m) * \
+#     #              normalalpha[m][-r] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#     #         a += (0.5 / sig * hydro.DIC_testfunctions[r] * H * sum([G4(m) * \
+#     #              normalalpha[m][r] for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#     # r = 0 term
+#     a += (-0.5/sig * H * sum([G4(m) * (hydro.alpha_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[0] + 
+#                                         hydro.beta_trialfunctions[m][0] * ngsolve.grad(hydro.DIC_testfunctions[0])[1]) for m in range(hydro.M)])) * ngsolve.dx
 
-    # r != 0-terms
-    for r in range(1, hydro.imax + 1):
-        a += (ngsolve.pi*r*hydro.gamma_trialfunctions[r]*hydro.DIC_testfunctions[-r] - 0.5/sig*H*sum([G4(m) * (
-            hydro.alpha_trialfunctions[m][-r] * ngsolve.grad(hydro.DIC_testfunctions[-r])[0] + 
-            hydro.beta_trialfunctions[m][-r] * ngsolve.grad(hydro.DIC_testfunctions[-r])[1]
-        ) for m in range(hydro.M)])) * ngsolve.dx
-        a += (ngsolve.pi*-r*hydro.gamma_trialfunctions[-r]*hydro.DIC_testfunctions[r] - 0.5/sig*H*sum([G4(m) * (
-            hydro.alpha_trialfunctions[m][r] * ngsolve.grad(hydro.DIC_testfunctions[r])[0] + 
-            hydro.beta_trialfunctions[m][r] * ngsolve.grad(hydro.DIC_testfunctions[r])[1]
-        ) for m in range(hydro.M)])) * ngsolve.dx
+#     # r != 0-terms
+#     for r in range(1, hydro.imax + 1):
+#         a += (ngsolve.pi*r*hydro.gamma_trialfunctions[r]*hydro.DIC_testfunctions[-r] - 0.5/sig*H*sum([G4(m) * (
+#             hydro.alpha_trialfunctions[m][-r] * ngsolve.grad(hydro.DIC_testfunctions[-r])[0] + 
+#             hydro.beta_trialfunctions[m][-r] * ngsolve.grad(hydro.DIC_testfunctions[-r])[1]
+#         ) for m in range(hydro.M)])) * ngsolve.dx
+#         a += (ngsolve.pi*-r*hydro.gamma_trialfunctions[-r]*hydro.DIC_testfunctions[r] - 0.5/sig*H*sum([G4(m) * (
+#             hydro.alpha_trialfunctions[m][r] * ngsolve.grad(hydro.DIC_testfunctions[r])[0] + 
+#             hydro.beta_trialfunctions[m][r] * ngsolve.grad(hydro.DIC_testfunctions[r])[1]
+#         ) for m in range(hydro.M)])) * ngsolve.dx
 
 
-    # Momentum equations
-    for k in range(hydro.M):
-        # Add everything but the advective terms
-        if forcing:
-            a += (0.5*ngsolve.sqrt(2)/sig*G5(k) * H * H * hydro.alpha_testfunctions[k][0] * rho_x / rho) * ngsolve.dx # U-momentum
-            a += (0.5*ngsolve.sqrt(2)/sig*G5(k) * H * H * hydro.beta_testfunctions[k][0] * rho_y / rho) * ngsolve.dx # V-momentum
+#     # Momentum equations
+#     for k in range(hydro.M):
+#         # Add everything but the advective terms
+#         if forcing:
+#             a += (0.5*ngsolve.sqrt(2)/sig*G5(k) * H * H * hydro.alpha_testfunctions[k][0] * rho_x / rho) * ngsolve.dx # U-momentum
+#             a += (0.5*ngsolve.sqrt(2)/sig*G5(k) * H * H * hydro.beta_testfunctions[k][0] * rho_y / rho) * ngsolve.dx # V-momentum
 
-        # r = 0 term
-        # U-momentum
-        a += (-0.5/sig * Av * G3(k, k) * hydro.alpha_trialfunctions[k][0]*hydro.alpha_testfunctions[k][0] / H - 
-                0.25*f/sig * H * hydro.beta_trialfunctions[k][0] * hydro.alpha_testfunctions[k][0] + 
-                0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[0])[0] * hydro.alpha_testfunctions[k][0]) * ngsolve.dx
-        # V-momentum
-        a += (-0.5/sig * Av * G3(k, k) * hydro.beta_trialfunctions[k][0]*hydro.beta_testfunctions[k][0] / H +
-                0.25*f/sig * H * hydro.alpha_trialfunctions[k][0] * hydro.beta_testfunctions[k][0] + 
-                0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[0])[1] * hydro.beta_testfunctions[k][0]) * ngsolve.dx
+#         # r = 0 term
+#         # U-momentum
+#         a += (-0.5/sig * Av * G3(k, k) * hydro.alpha_trialfunctions[k][0]*hydro.alpha_testfunctions[k][0] / H - 
+#                 0.25*f/sig * H * hydro.beta_trialfunctions[k][0] * hydro.alpha_testfunctions[k][0] + 
+#                 0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[0])[0] * hydro.alpha_testfunctions[k][0]) * ngsolve.dx
+#         # V-momentum
+#         a += (-0.5/sig * Av * G3(k, k) * hydro.beta_trialfunctions[k][0]*hydro.beta_testfunctions[k][0] / H +
+#                 0.25*f/sig * H * hydro.alpha_trialfunctions[k][0] * hydro.beta_testfunctions[k][0] + 
+#                 0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[0])[1] * hydro.beta_testfunctions[k][0]) * ngsolve.dx
         
-        # r != 0-terms
-        for r in range(1, hydro.imax + 1):
-            # U-momentum
-            a += ((0.5*ngsolve.pi*r*hydro.alpha_trialfunctions[k][r] *hydro.alpha_testfunctions[k][-r]- 
-                    0.5/sig*Av*G3(k,k) * hydro.alpha_trialfunctions[k][-r]*hydro.alpha_testfunctions[k][-r] / H - 
-                    0.25*f/sig * H * hydro.beta_trialfunctions[k][-r] * hydro.alpha_testfunctions[k][-r] + 
-                    0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[-r])[0] * hydro.alpha_testfunctions[k][-r]) + 
+#         # r != 0-terms
+#         for r in range(1, hydro.imax + 1):
+#             # U-momentum
+#             a += ((0.5*ngsolve.pi*r*hydro.alpha_trialfunctions[k][r] *hydro.alpha_testfunctions[k][-r]- 
+#                     0.5/sig*Av*G3(k,k) * hydro.alpha_trialfunctions[k][-r]*hydro.alpha_testfunctions[k][-r] / H - 
+#                     0.25*f/sig * H * hydro.beta_trialfunctions[k][-r] * hydro.alpha_testfunctions[k][-r] + 
+#                     0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[-r])[0] * hydro.alpha_testfunctions[k][-r]) + 
                     
-                    (0.5*ngsolve.pi*-r*hydro.alpha_trialfunctions[k][-r] * hydro.alpha_testfunctions[k][r] - 
-                    0.5/sig*Av*G3(k,k) * hydro.alpha_trialfunctions[k][r]*hydro.alpha_testfunctions[k][r] / H - 
-                    0.25*f/sig * H * hydro.beta_trialfunctions[k][r] * hydro.alpha_testfunctions[k][r] + 
-                    0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[r])[0] * hydro.alpha_testfunctions[k][r])) * ngsolve.dx
-            # V-momentum
-            a += ((0.5*ngsolve.pi*r*hydro.beta_trialfunctions[k][r]*hydro.beta_testfunctions[k][-r] - 
-                    0.5/sig*Av*G3(k,k) * hydro.beta_trialfunctions[k][-r]*hydro.beta_testfunctions[k][-r] / H + 
-                    0.25*f/sig * H * hydro.alpha_trialfunctions[k][-r] * hydro.beta_testfunctions[k][-r] + 
-                    0.5*H*g/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[-r])[1] * hydro.beta_testfunctions[k][-r]) + 
+#                     (0.5*ngsolve.pi*-r*hydro.alpha_trialfunctions[k][-r] * hydro.alpha_testfunctions[k][r] - 
+#                     0.5/sig*Av*G3(k,k) * hydro.alpha_trialfunctions[k][r]*hydro.alpha_testfunctions[k][r] / H - 
+#                     0.25*f/sig * H * hydro.beta_trialfunctions[k][r] * hydro.alpha_testfunctions[k][r] + 
+#                     0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[r])[0] * hydro.alpha_testfunctions[k][r])) * ngsolve.dx
+#             # V-momentum
+#             a += ((0.5*ngsolve.pi*r*hydro.beta_trialfunctions[k][r]*hydro.beta_testfunctions[k][-r] - 
+#                     0.5/sig*Av*G3(k,k) * hydro.beta_trialfunctions[k][-r]*hydro.beta_testfunctions[k][-r] / H + 
+#                     0.25*f/sig * H * hydro.alpha_trialfunctions[k][-r] * hydro.beta_testfunctions[k][-r] + 
+#                     0.5*H*g/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[-r])[1] * hydro.beta_testfunctions[k][-r]) + 
                     
-                    (0.5*ngsolve.pi*-r*hydro.beta_trialfunctions[k][-r]*hydro.beta_testfunctions[k][r] - 
-                    0.5/sig*Av*G3(k,k) * hydro.beta_trialfunctions[k][r]*hydro.beta_testfunctions[k][r] / H +
-                    0.25*f/sig * H * hydro.alpha_trialfunctions[k][r] * hydro.beta_testfunctions[k][r] + 
-                    0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[r])[1] * hydro.beta_testfunctions[k][r])) * ngsolve.dx
+#                     (0.5*ngsolve.pi*-r*hydro.beta_trialfunctions[k][-r]*hydro.beta_testfunctions[k][r] - 
+#                     0.5/sig*Av*G3(k,k) * hydro.beta_trialfunctions[k][r]*hydro.beta_testfunctions[k][r] / H +
+#                     0.25*f/sig * H * hydro.alpha_trialfunctions[k][r] * hydro.beta_testfunctions[k][r] + 
+#                     0.5*g*H/sig * G4(k) * ngsolve.grad(hydro.gamma_trialfunctions[r])[1] * hydro.beta_testfunctions[k][r])) * ngsolve.dx
             
 
-def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, advection_weighting_parameter=1):
-    G1 = hydro.vertical_basis.tensor_dict['G1']
-    G2 = hydro.vertical_basis.tensor_dict['G2']
+# def add_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, advection_weighting_parameter=1):
+#     G1 = hydro.vertical_basis.tensor_dict['G1']
+#     G2 = hydro.vertical_basis.tensor_dict['G2']
 
-    H3 = hydro.time_basis.tensor_dict['H3']
+#     H3 = hydro.time_basis.tensor_dict['H3']
 
-    H = hydro.spatial_physical_parameters['H'].cf
+#     H = hydro.spatial_physical_parameters['H'].cf
     
-    normalalpha = hydro.riverine_forcing.normal_alpha
-    for k in range(hydro.M):
+#     normalalpha = hydro.riverine_forcing.normal_alpha
+#     for k in range(hydro.M):
         
-        # add nonlinear part of a
-        # U-momentum
-        a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, 0) * (
-            (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-        ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
-            (-H * advection_weighting_parameter * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
-                                                    ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
-            - (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
-                                                    hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-        ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
-        # V-momentum
-        a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, 0) * (
-            (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-        ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
-            (-H * advection_weighting_parameter * hydro.beta_testfunctions[k][0] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
-                                                    ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
-            - (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
-                                                    hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-        ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
+#         # add nonlinear part of a
+#         # U-momentum
+#         a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, 0) * (
+#             (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#         ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
+#             (-H * advection_weighting_parameter * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
+#                                                     ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
+#             - (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
+#                                                     hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#         ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
+#         # V-momentum
+#         a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, 0) * (
+#             (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#         ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
+#             (-H * advection_weighting_parameter * hydro.beta_testfunctions[k][0] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
+#                                                     ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
+#             - (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
+#                                                     hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#         ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-        for r in range(1, hydro.imax + 1):
-            # add nonlinear part of a
-            # U-momentum component -r
-            a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
-                (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * (
-                (-H * advection_weighting_parameter * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
-                                                        ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
-            - (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
-            # U-momentum component +r
-            a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
-                (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
-                (-H * advection_weighting_parameter * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
-                                                        ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
-            - (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
-            # V-momentum component -r
-            a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
-                (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * (
-                (-H * advection_weighting_parameter * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
-                                                        ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
-            - (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
-            # V-momentum component +r
-            a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
-                (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
-                (-H * advection_weighting_parameter * hydro.beta_testfunctions[k][r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
-                                                        ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
-            - (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
-                                                        hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])) * ngsolve.dx
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-            + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-            ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
+#         for r in range(1, hydro.imax + 1):
+#             # add nonlinear part of a
+#             # U-momentum component -r
+#             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
+#                 (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * (
+#                 (-H * advection_weighting_parameter * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
+#                                                         ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
+#             - (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
+#             # U-momentum component +r
+#             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
+#                 (-H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
+#                 (-H * advection_weighting_parameter * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
+#                                                         ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
+#             - (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
+#             # V-momentum component -r
+#             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, -r) * (
+#                 (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * (
+#                 (-H * advection_weighting_parameter * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
+#                                                         ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
+#             - (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
+#             # V-momentum component +r
+#             a += sum([sum([sum([sum([G1(m, n, k) * H3(p, q, r) * (
+#                 (-H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
+#                 (-H * advection_weighting_parameter * hydro.beta_testfunctions[k][r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * hydro.alpha_trialfunctions[n][p] + 
+#                                                         ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * hydro.beta_trialfunctions[n][p])) * ngsolve.dx
+#             - (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
+#                                                         hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])) * ngsolve.dx
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+#             + (H * advection_weighting_parameter * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (hydro.n[0]*hydro.alpha_trialfunctions[n][p] + hydro.n[1]*hydro.beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#             ) for m in range(hydro.M)]) for n in range(hydro.M)]) for p in range(-hydro.imax, hydro.imax + 1)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, alpha0, beta0, gamma0, advection_weighting_parameter=1):
-    G1 = hydro.vertical_basis.tensor_dict['G1']
-    G2 = hydro.vertical_basis.tensor_dict['G2']
+# def add_linearised_nonlinear_part_to_bilinearform_NS_DI_EVC_RL(hydro: Hydrodynamics, a: ngsolve.BilinearForm, alpha0, beta0, gamma0, advection_weighting_parameter=1):
+#     G1 = hydro.vertical_basis.tensor_dict['G1']
+#     G2 = hydro.vertical_basis.tensor_dict['G2']
 
-    H3 = hydro.time_basis.tensor_dict['H3']
-    H3_iszero = hydro.time_basis.tensor_dict['H3_iszero']
+#     H3 = hydro.time_basis.tensor_dict['H3']
+#     H3_iszero = hydro.time_basis.tensor_dict['H3_iszero']
 
-    H = hydro.spatial_physical_parameters['H'].cf
+#     H = hydro.spatial_physical_parameters['H'].cf
     
-    normalalpha = hydro.riverine_forcing.normal_alpha
+#     normalalpha = hydro.riverine_forcing.normal_alpha
 
-    for k in range(hydro.M):
-        for p in range(-hydro.imax, hydro.imax + 1):
-            for q in range(-hydro.imax, hydro.imax + 1):
-                if H3_iszero(p, q, 0):
-                    continue
-                else:
-                    # interior domain integration for u-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
-                                            hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - \
-                        H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])
-                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
-                        -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
-                                            hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - \
-                        H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - 
-                        H * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(alpha0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
-                                                            ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
-                        H * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                            ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                    ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
-                    # integration over seaward boundary for u-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        H * alpha0[m][q] * hydro.alpha_testfunctions[k][0] * (
-                            hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                        ) + 
-                        H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (
-                            alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                        )
-                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
-                        H * alpha0[m][q] * hydro.alpha_testfunctions[k][0] * (
-                            hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                        ) + 
-                        H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (
-                            alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                        )
-                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    # interior domain integration for v-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
-                                            hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - \
-                        H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])
-                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
-                        -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
-                                            hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - \
-                        H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - 
-                        H * hydro.beta_testfunctions[k][0] * (ngsolve.grad(beta0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
-                                                            ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
-                        H * hydro.beta_testfunctions[k][0] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                            ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
-                    ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
-                    # integration over seaward boundary for v-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        H * beta0[m][q] * hydro.beta_testfunctions[k][0] * (
-                            hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                        ) + 
-                        H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (
-                            alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                        )
-                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
-                        H * beta0[m][q] * hydro.beta_testfunctions[k][0] * (
-                            hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                        ) + 
-                        H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (
-                            alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                        )
-                    ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#     for k in range(hydro.M):
+#         for p in range(-hydro.imax, hydro.imax + 1):
+#             for q in range(-hydro.imax, hydro.imax + 1):
+#                 if H3_iszero(p, q, 0):
+#                     continue
+#                 else:
+#                     # interior domain integration for u-momentum
+#                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+#                         -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
+#                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - \
+#                         H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + \
+#                                                                 beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1])
+#                     ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
+#                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
+#                         -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + 
+#                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - \
+#                         H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[0] + \
+#                                                                 beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][0])[1]) - 
+#                         H * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(alpha0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
+#                                                             ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
+#                         H * hydro.alpha_testfunctions[k][0] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
+#                                                             ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
+#                     ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
+#                     # integration over seaward boundary for u-momentum
+#                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+#                         H * alpha0[m][q] * hydro.alpha_testfunctions[k][0] * (
+#                             hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                         ) + 
+#                         H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (
+#                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                         )
+#                     ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
+#                         H * alpha0[m][q] * hydro.alpha_testfunctions[k][0] * (
+#                             hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                         ) + 
+#                         H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][0] * (
+#                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                         )
+#                     ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                     # interior domain integration for v-momentum
+#                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+#                         -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
+#                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - \
+#                         H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + \
+#                                                                 beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1])
+#                     ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
+#                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
+#                         -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + 
+#                                             hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - \
+#                         H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[0] + \
+#                                                                 beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][0])[1]) - 
+#                         H * hydro.beta_testfunctions[k][0] * (ngsolve.grad(beta0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
+#                                                             ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
+#                         H * hydro.beta_testfunctions[k][0] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
+#                                                             ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
+#                     ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
+#                     # integration over seaward boundary for v-momentum
+#                     a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+#                         H * beta0[m][q] * hydro.beta_testfunctions[k][0] * (
+#                             hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                         ) + 
+#                         H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (
+#                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                         )
+#                     ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                     a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
+#                         H * beta0[m][q] * hydro.beta_testfunctions[k][0] * (
+#                             hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                         ) + 
+#                         H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][0] * (
+#                             alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                         )
+#                     ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
                             
-                # terms r != 0
-        for r in range(1, hydro.imax + 1):
-            for p in range(-hydro.imax, hydro.imax + 1):
-                for q in range(-hydro.imax, hydro.imax + 1):
-                    if H3_iszero(p, q, r):
-                        continue
-                    else:
-                        # terms -r
-                        # interior domain integration for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - \
-                            H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - \
-                            H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - 
-                            H * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(alpha0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
-                            H * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
-                        # integration over seaward boundary for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            H * alpha0[m][q] * hydro.alpha_testfunctions[k][-r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * alpha0[m][q] * hydro.alpha_testfunctions[k][-r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        # interior domain integration for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - \
-                            H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - \
-                            H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - 
-                            H * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(beta0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
-                            H * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
-                        # integration over seaward boundary for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            H * beta0[m][q] * hydro.beta_testfunctions[k][-r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * beta0[m][q] * hydro.beta_testfunctions[k][-r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                 # terms r != 0
+#         for r in range(1, hydro.imax + 1):
+#             for p in range(-hydro.imax, hydro.imax + 1):
+#                 for q in range(-hydro.imax, hydro.imax + 1):
+#                     if H3_iszero(p, q, r):
+#                         continue
+#                     else:
+#                         # terms -r
+#                         # interior domain integration for u-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+#                             -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - \
+#                             H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1])
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
+#                             -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - \
+#                             H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][-r])[1]) - 
+#                             H * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(alpha0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
+#                                                                 ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
+#                             H * hydro.alpha_testfunctions[k][-r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
+#                                                                 ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
+#                         ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
+#                         # integration over seaward boundary for u-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+#                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][-r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
+#                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][-r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][-r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         # interior domain integration for v-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+#                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - \
+#                             H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1])
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
+#                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - \
+#                             H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][-r])[1]) - 
+#                             H * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(beta0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
+#                                                                 ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
+#                             H * hydro.beta_testfunctions[k][-r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
+#                                                                 ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
+#                         ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
+#                         # integration over seaward boundary for v-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+#                             H * beta0[m][q] * hydro.beta_testfunctions[k][-r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
+#                             H * beta0[m][q] * hydro.beta_testfunctions[k][-r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][-r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
-                        # terms +r
-                        # interior domain integration for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - \
-                            H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1])
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - \
-                            H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - 
-                            H * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(alpha0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
-                            H * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
-                        # integration over seaward boundary for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            H * alpha0[m][q] * hydro.alpha_testfunctions[k][r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * alpha0[m][q] * hydro.alpha_testfunctions[k][r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        # interior domain integration for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - \
-                            H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
-                                                hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - \
-                            H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - 
-                            H * hydro.beta_testfunctions[k][r] * (ngsolve.grad(beta0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
-                            H * hydro.beta_testfunctions[k][r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
-                        # integration over seaward boundary for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            H * beta0[m][q] * hydro.beta_testfunctions[k][r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * beta0[m][q] * hydro.beta_testfunctions[k][r] * (
-                                hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
-                            ) + 
-                            H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (
-                                alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
-                            )
-                        ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         # terms +r
+#                         # interior domain integration for u-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+#                             -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - \
+#                             H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1])
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
+#                             -H * alpha0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - \
+#                             H * hydro.alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.alpha_testfunctions[k][r])[1]) - 
+#                             H * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(alpha0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
+#                                                                 ngsolve.grad(alpha0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
+#                             H * hydro.alpha_testfunctions[k][r] * (ngsolve.grad(hydro.alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
+#                                                                 ngsolve.grad(hydro.alpha_trialfunctions[m][q])[1] * beta0[n][p])
+#                         ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
+#                         # integration over seaward boundary for u-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+#                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
+#                             H * alpha0[m][q] * hydro.alpha_testfunctions[k][r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.alpha_trialfunctions[m][q] * hydro.alpha_testfunctions[k][r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         # interior domain integration for v-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+#                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - \
+#                             H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1])
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.dx
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
+#                             -H * beta0[m][q] * (hydro.alpha_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + 
+#                                                 hydro.beta_trialfunctions[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - \
+#                             H * hydro.beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[0] + \
+#                                                                     beta0[n][p] * ngsolve.grad(hydro.beta_testfunctions[k][r])[1]) - 
+#                             H * hydro.beta_testfunctions[k][r] * (ngsolve.grad(beta0[m][q])[0] * hydro.alpha_trialfunctions[n][p] + \
+#                                                                 ngsolve.grad(beta0[m][q])[1] * hydro.beta_trialfunctions[n][p]) -
+#                             H * hydro.beta_testfunctions[k][r] * (ngsolve.grad(hydro.beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
+#                                                                 ngsolve.grad(hydro.beta_trialfunctions[m][q])[1] * beta0[n][p])
+#                         ) for n in range(hydro.M)])for m in range(hydro.M)]))*ngsolve.dx
+#                         # integration over seaward boundary for v-momentum
+#                         a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+#                             H * beta0[m][q] * hydro.beta_testfunctions[k][r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+#                         a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
+#                             H * beta0[m][q] * hydro.beta_testfunctions[k][r] * (
+#                                 hydro.alpha_trialfunctions[n][p] * hydro.n[0] + hydro.beta_trialfunctions[n][p] * hydro.n[1]
+#                             ) + 
+#                             H * hydro.beta_trialfunctions[m][q] * hydro.beta_testfunctions[k][r] * (
+#                                 alpha0[n][p] * hydro.n[0] + beta0[n][p] * hydro.n[1]
+#                             )
+#                         ) for n in range(hydro.M)]) for m in range(hydro.M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
 # def _setup_forms_NS_DI_EVC_RL_linearisation(self, alpha0, beta0, gamma0, advection_weighting_parameter=1):
 #     G1 = self.vertical_basis.tensor_dict['G1']

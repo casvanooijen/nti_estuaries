@@ -120,9 +120,14 @@ class PostProcessing(object):
         self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
         self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-        H = hydro.spatial_physical_parameters['H'].cf
-        Hx = hydro.spatial_physical_parameters['H'].gradient_cf[0]
-        Hy = hydro.spatial_physical_parameters['H'].gradient_cf[1]
+        if hydro.loaded_from_files: # in this case, spatial parameters are stored as GridFunctions instead of SpatialParameter objects
+            H = hydro.spatial_physical_parameters['H']
+            Hx = ngsolve.grad(H)[0]
+            Hy = ngsolve.grad(H)[1]
+        else:
+            H = hydro.spatial_physical_parameters['H'].cf
+            Hx = hydro.spatial_physical_parameters['H'].gradient_cf[0]
+            Hy = hydro.spatial_physical_parameters['H'].gradient_cf[1]
 
         F = dict()
         F[0] = [H * (ngsolve.grad(hydro.alpha_solution[m][0])[0] + ngsolve.grad(hydro.beta_solution[m][0])[1]) + \

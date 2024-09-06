@@ -40,7 +40,7 @@ mesh = ngsolve.Mesh(geometry.GenerateMesh(maxh=maxh_global))
 
 # STEP 2: Set parameters =======================================================================================
 
-sem_order = 6 # order of the Spectral Element basis (Dubiner basis)
+sem_order = 2 # order of the Spectral Element basis (Dubiner basis)
 M = 7 # amount of vertical basis functions to be projected on
 imax = 1 # amount of tidal constituents in addition to subtidal flow
 
@@ -89,13 +89,23 @@ time_basis = harmonic_time_basis(sigma)
 
 # set options
 
-model_options = select_model_options(bed_bc='no_slip', leading_order_surface=True, veddy_viscosity_assumption='constant', density='depth-independent', advection_epsilon=0)
+model_options = select_model_options(bed_bc='no_slip',
+                                     leading_order_surface=True,
+                                     veddy_viscosity_assumption='constant', 
+                                     density='depth-independent',
+                                     advection_epsilon=0,
+                                     advection_influence_matrix=np.array([[True, True],
+                                                                          [False, False]]))
 
 # create object
 
 hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f)
 hydro.set_spatial_physical_parameters(H_sp, rho_sp)
+
+# refine mesh based on bathymetry gradient
+
+hydro.hrefine(1.2, 2)
 
 # set tidal forcing
 
@@ -105,7 +115,7 @@ hydro.set_seaward_boundary_condition(tide_amplitude_list, tide_phase_list)
 
 # set river discharge (only stationary discharges work right now)
 
-discharge_amplitude_list = [0.1, 0]
+discharge_amplitude_list = [0, 0]
 discharge_phase_list = [0, 0]
 hydro.set_riverine_boundary_condition(discharge_amplitude_list, discharge_phase_list, is_constant=True)
 
@@ -140,6 +150,8 @@ postpro.plot_colormap(postpro.u_DA(0), refinement_level=4, show_mesh=False, titl
 
 postpro.plot_vertical_cross_section(lambda sig: postpro.u_abs(1, sig), "Amplitude of semidiurnal along-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
 postpro.plot_vertical_cross_section(lambda sig: postpro.v_abs(1, sig), "Amplitude of semidiurnal cross-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
+
+postpro.plot_mesh2d('mesh')
 
 plt.show()
 

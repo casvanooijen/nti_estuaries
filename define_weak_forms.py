@@ -29,7 +29,8 @@ def add_nonlinear_part(a: ngsolve.BilinearForm, model_options: dict, alpha_trial
     if model_options['bed_bc'] == 'no_slip' and model_options['leading_order_surface'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
         return _add_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                                 umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax,
-                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options['advection_epsilon'], n)
+                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options['advection_epsilon'],
+                                                model_options['advection_influence_matrix'], n)
     else:
         print("Nonlinear part of weak form was not set up")
 
@@ -42,7 +43,8 @@ def add_linearised_nonlinear_part(a: ngsolve.BilinearForm, model_options: dict, 
     if model_options['bed_bc'] == 'no_slip' and model_options['leading_order_surface'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
         return _add_linearised_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                                 umom_testfunctions, vmom_testfunctions, DIC_testfunctions, alpha0, beta0, gamma0, M, imax,
-                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options['advection_epsilon'], n)
+                                                constant_parameters, spatial_parameters, vertical_basis, time_basis, normalalpha, model_options['advection_epsilon'], 
+                                                model_options['advection_influence_matrix'], n)
 ## Private functions that add the weak forms to the ngsolve.BilinearForm object
 
 def _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
@@ -135,7 +137,8 @@ def _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunction
 def _add_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                       umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax,
                                       constant_parameters, spatial_parameters, vertical_basis: TruncationBasis, 
-                                      time_basis: TruncationBasis, normalalpha, advection_weighting_parameter, normal):
+                                      time_basis: TruncationBasis, normalalpha, advection_weighting_parameter, 
+                                      advection_influence_matrix, normal):
     
     G1 = vertical_basis.tensor_dict['G1']
     G2 = vertical_basis.tensor_dict['G2']
@@ -153,33 +156,34 @@ def _add_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctio
                 if H3_iszero(p, q, 0):
                     continue
                 else:
-                    a += sum([sum([G1(m, n, k) * H3(p, q, 0) * (
-                        (-H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1])) * ngsolve.dx
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
-                        ((-H * advection_weighting_parameter * umom_testfunctions[k][0] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
-                                                                ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
-                        - (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
-                                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]))) * ngsolve.dx
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    ) for m in range(M)]) for n in range(M)])
-                    # V-momentum
-                    a += sum([sum([G1(m, n, k) * H3(p, q, 0) * (
-                        (-H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1])) * ngsolve.dx
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
-                        ((-H * advection_weighting_parameter * vmom_testfunctions[k][0] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
-                                                                ngsolve.grad(beta_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
-                        - (H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
-                                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]))) * ngsolve.dx
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    ) for m in range(M)]) for n in range(M)])
+                    if advection_influence_matrix[0, p] and advection_influence_matrix[0, q]:
+                        a += sum([sum([G1(m, n, k) * H3(p, q, 0) * (
+                            (-H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1])) * ngsolve.dx
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
+                            ((-H * advection_weighting_parameter * umom_testfunctions[k][0] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
+                                                                    ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
+                            - (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
+                                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]))) * ngsolve.dx
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for m in range(M)]) for n in range(M)])
+                        # V-momentum
+                        a += sum([sum([G1(m, n, k) * H3(p, q, 0) * (
+                            (-H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1])) * ngsolve.dx
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) - H3(p,q,0) * (G1(m,n,k)+G2(m,n,k)) * (
+                            ((-H * advection_weighting_parameter * vmom_testfunctions[k][0] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
+                                                                    ngsolve.grad(beta_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
+                            - (H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
+                                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]))) * ngsolve.dx
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        ) for m in range(M)]) for n in range(M)])
 
         for r in range(1, imax + 1):
             # add nonlinear part of a
@@ -187,80 +191,83 @@ def _add_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctio
             for p in range(-imax, imax+1):
                 for q in range(-imax, imax+1):
                     if not H3_iszero(p, q, -r):
-                        # U-momentum
-                        a += sum([sum([G1(m, n, k) * H3(p, q, -r) * (
-                            (-H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1])) * ngsolve.dx
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * ( 
-                           ((-H * advection_weighting_parameter * umom_testfunctions[k][-r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
-                                                                   ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta_trialfunctions[n][p])) 
-                        - (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
-                                                                   beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]))) * ngsolve.dx)
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        for m in range(M)]) for n in range(M)])
+                        if advection_influence_matrix[r, p] and advection_influence_matrix[r, q]:
+                            # U-momentum
+                            a += sum([sum([G1(m, n, k) * H3(p, q, -r) * (
+                                (-H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1])) * ngsolve.dx
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * ( 
+                            ((-H * advection_weighting_parameter * umom_testfunctions[k][-r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
+                                                                    ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta_trialfunctions[n][p])) 
+                            - (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
+                                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]))) * ngsolve.dx)
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            for m in range(M)]) for n in range(M)])
 
-                        
-                        
-                        # V-momentum component -r
-                        a += sum([sum([G1(m, n, k) * H3(p, q, -r) * (
-                            (-H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1])) * ngsolve.dx
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * (
-                            ((-H * advection_weighting_parameter * vmom_testfunctions[k][-r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
-                                                                    ngsolve.grad(beta_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
-                        - (H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]))) * ngsolve.dx)
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        for m in range(M)]) for n in range(M)])
+                            
+                            
+                            # V-momentum component -r
+                            a += sum([sum([G1(m, n, k) * H3(p, q, -r) * (
+                                (-H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1])) * ngsolve.dx
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            ) - H3(p,q,-r) * (G1(m,n,k)+G2(m,n,k)) * (
+                                ((-H * advection_weighting_parameter * vmom_testfunctions[k][-r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
+                                                                        ngsolve.grad(beta_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
+                            - (H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]))) * ngsolve.dx)
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            for m in range(M)]) for n in range(M)])
 
                         
                     
                     if not H3_iszero(p, q, r):
-                        # U-momentum component +r
-                        a += sum([sum([G1(m, n, k) * H3(p, q, r) * (
-                            (-H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1])) * ngsolve.dx
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
-                            ((-H * advection_weighting_parameter * umom_testfunctions[k][r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
-                                                                    ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
-                        - (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]))) * ngsolve.dx
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        ) for m in range(M)]) for n in range(M)])
+                        if advection_influence_matrix[r, p] and advection_influence_matrix[r, q]:
+                            # U-momentum component +r
+                            a += sum([sum([G1(m, n, k) * H3(p, q, r) * (
+                                (-H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1])) * ngsolve.dx
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
+                                ((-H * advection_weighting_parameter * umom_testfunctions[k][r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
+                                                                        ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
+                            - (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]))) * ngsolve.dx
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            ) for m in range(M)]) for n in range(M)])
 
-                        
-                        
-                        # V-momentum component +r
-                        a += sum([sum([G1(m, n, k) * H3(p, q, r) * (
-                            (-H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1])) * ngsolve.dx
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
-                            ((-H * advection_weighting_parameter * vmom_testfunctions[k][r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
-                                                                    ngsolve.grad(beta_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
-                        - (H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
-                                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]))) * ngsolve.dx
+                            
+                            
+                            # V-momentum component +r
+                            a += sum([sum([G1(m, n, k) * H3(p, q, r) * (
+                                (-H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1])) * ngsolve.dx
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            ) - H3(p,q,r) * (G1(m,n,k)+G2(m,n,k)) * (
+                                ((-H * advection_weighting_parameter * vmom_testfunctions[k][r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha_trialfunctions[n][p] + 
+                                                                        ngsolve.grad(beta_trialfunctions[m][q])[1] * beta_trialfunctions[n][p]))
+                            - (H * advection_weighting_parameter * beta_trialfunctions[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
+                                                                        beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]))) * ngsolve.dx
 
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        ) for m in range(M)]) for n in range(M)])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            + (H * advection_weighting_parameter * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (normal[0]*alpha_trialfunctions[n][p] + normal[1]*beta_trialfunctions[n][p])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            ) for m in range(M)]) for n in range(M)])
                         
 
             
 def _add_linearised_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                       umom_testfunctions, vmom_testfunctions, DIC_testfunctions, alpha0, beta0, gamma0, M, imax,
                                       constant_parameters, spatial_parameters, vertical_basis: TruncationBasis, 
-                                      time_basis: TruncationBasis, normalalpha, advection_weighting_parameter, normal):
+                                      time_basis: TruncationBasis, normalalpha, advection_weighting_parameter, 
+                                      advection_influence_matrix, normal):
     
     G1 = vertical_basis.tensor_dict['G1']
     G2 = vertical_basis.tensor_dict['G2']
@@ -276,88 +283,89 @@ def _add_linearised_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_t
                 if H3_iszero(p, q, 0):
                     continue
                 else:
-                    # interior domain integration for u-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
-                                            beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]) - \
-                        H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1])
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
-                        -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
-                                            beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]) - \
-                        H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]) - 
-                        H * umom_testfunctions[k][0] * (ngsolve.grad(alpha0[m][q])[0] * alpha_trialfunctions[n][p] + \
-                                                            ngsolve.grad(alpha0[m][q])[1] * beta_trialfunctions[n][p]) -
-                        H * umom_testfunctions[k][0] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                            ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                    ) for n in range(M)])for m in range(M)]))*ngsolve.dx
-                    # integration over seaward boundary for u-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        H * alpha0[m][q] * umom_testfunctions[k][0] * (
-                            alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                        ) + 
-                        H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (
-                            alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                        )
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
-                        H * alpha0[m][q] * umom_testfunctions[k][0] * (
-                            alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                        ) + 
-                        H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (
-                            alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                        )
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    # integration over riverine boundary for u-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
-                        H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                    # interior domain integration for v-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
-                                            beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]) - \
-                        H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1])
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
-                        -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
-                                            beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]) - \
-                        H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + \
-                                                                beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]) - 
-                        H * vmom_testfunctions[k][0] * (ngsolve.grad(beta0[m][q])[0] * alpha_trialfunctions[n][p] + \
-                                                            ngsolve.grad(beta0[m][q])[1] * beta_trialfunctions[n][p]) -
-                        H * vmom_testfunctions[k][0] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                            ngsolve.grad(beta_trialfunctions[m][q])[1] * beta0[n][p])
-                    ) for n in range(M)])for m in range(M)]))*ngsolve.dx
-                    # integration over seaward boundary for v-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        H * beta0[m][q] * vmom_testfunctions[k][0] * (
-                            alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                        ) + 
-                        H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (
-                            alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                        )
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
-                        H * beta0[m][q] * vmom_testfunctions[k][0] * (
-                            alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                        ) + 
-                        H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (
-                            alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                        )
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                    # integration over riverine boundary for v-momentum
-                    a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
-                        H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                    a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
-                        H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]
-                    ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                    if advection_influence_matrix[0, p] and advection_influence_matrix[0, q]:
+                        # interior domain integration for u-momentum
+                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+                            -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
+                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]) - \
+                            H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + \
+                                                                    beta0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1])
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
+                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
+                            -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + 
+                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]) - \
+                            H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[0] + \
+                                                                    beta0[n][p] * ngsolve.grad(umom_testfunctions[k][0])[1]) - 
+                            H * umom_testfunctions[k][0] * (ngsolve.grad(alpha0[m][q])[0] * alpha_trialfunctions[n][p] + \
+                                                                ngsolve.grad(alpha0[m][q])[1] * beta_trialfunctions[n][p]) -
+                            H * umom_testfunctions[k][0] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
+                                                                ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta0[n][p])
+                        ) for n in range(M)])for m in range(M)]))*ngsolve.dx
+                        # integration over seaward boundary for u-momentum
+                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+                            H * alpha0[m][q] * umom_testfunctions[k][0] * (
+                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                            ) + 
+                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (
+                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                            )
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
+                            H * alpha0[m][q] * umom_testfunctions[k][0] * (
+                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                            ) + 
+                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * (
+                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                            )
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        # integration over riverine boundary for u-momentum
+                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
+                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][0] * normalalpha[n][p]
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                        # interior domain integration for v-momentum
+                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+                            -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
+                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]) - \
+                            H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + \
+                                                                    beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1])
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
+                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k))*(
+                            -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + 
+                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]) - \
+                            H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[0] + \
+                                                                    beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][0])[1]) - 
+                            H * vmom_testfunctions[k][0] * (ngsolve.grad(beta0[m][q])[0] * alpha_trialfunctions[n][p] + \
+                                                                ngsolve.grad(beta0[m][q])[1] * beta_trialfunctions[n][p]) -
+                            H * vmom_testfunctions[k][0] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
+                                                                ngsolve.grad(beta_trialfunctions[m][q])[1] * beta0[n][p])
+                        ) for n in range(M)])for m in range(M)]))*ngsolve.dx
+                        # integration over seaward boundary for v-momentum
+                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+                            H * beta0[m][q] * vmom_testfunctions[k][0] * (
+                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                            ) + 
+                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (
+                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                            )
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
+                            H * beta0[m][q] * vmom_testfunctions[k][0] * (
+                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                            ) + 
+                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * (
+                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                            )
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        # integration over riverine boundary for v-momentum
+                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,0)*(
+                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,0)*(G1(m,n,k)+G2(m,n,k)) * (
+                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][0] * normalalpha[n][p]
+                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
                             
                 # terms r != 0
         for r in range(1, imax + 1):
@@ -366,173 +374,174 @@ def _add_linearised_nonlinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_t
                     if H3_iszero(p, q, r):
                         continue
                     else:
-                        # terms -r
-                        # interior domain integration for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]) - \
-                            H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1])
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]) - \
-                            H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]) - 
-                            H * umom_testfunctions[k][-r] * (ngsolve.grad(alpha0[m][q])[0] * alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(alpha0[m][q])[1] * beta_trialfunctions[n][p]) -
-                            H * umom_testfunctions[k][-r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(M)])for m in range(M)]))*ngsolve.dx
-                        # integration over seaward boundary for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            H * alpha0[m][q] * umom_testfunctions[k][-r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * alpha0[m][q] * umom_testfunctions[k][-r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        # integration over riverine boundary for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        # interior domain integration for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]) - \
-                            H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1])
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]) - \
-                            H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]) - 
-                            H * vmom_testfunctions[k][-r] * (ngsolve.grad(beta0[m][q])[0] * alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(beta0[m][q])[1] * beta_trialfunctions[n][p]) -
-                            H * vmom_testfunctions[k][-r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(beta_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(M)])for m in range(M)]))*ngsolve.dx
-                        # integration over seaward boundary for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            H * beta0[m][q] * vmom_testfunctions[k][-r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * beta0[m][q] * vmom_testfunctions[k][-r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        # integration over riverine boundary for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                        if advection_influence_matrix[r, p] and advection_influence_matrix[r, q]:
+                            # terms -r
+                            # interior domain integration for u-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+                                -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]) - \
+                                H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1])
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
+                                -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]) - \
+                                H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(umom_testfunctions[k][-r])[1]) - 
+                                H * umom_testfunctions[k][-r] * (ngsolve.grad(alpha0[m][q])[0] * alpha_trialfunctions[n][p] + \
+                                                                    ngsolve.grad(alpha0[m][q])[1] * beta_trialfunctions[n][p]) -
+                                H * umom_testfunctions[k][-r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
+                                                                    ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta0[n][p])
+                            ) for n in range(M)])for m in range(M)]))*ngsolve.dx
+                            # integration over seaward boundary for u-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+                                H * alpha0[m][q] * umom_testfunctions[k][-r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * alpha0[m][q] * umom_testfunctions[k][-r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            # integration over riverine boundary for u-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][-r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            # interior domain integration for v-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+                                -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]) - \
+                                H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1])
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k))*(
+                                -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]) - \
+                                H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][-r])[1]) - 
+                                H * vmom_testfunctions[k][-r] * (ngsolve.grad(beta0[m][q])[0] * alpha_trialfunctions[n][p] + \
+                                                                    ngsolve.grad(beta0[m][q])[1] * beta_trialfunctions[n][p]) -
+                                H * vmom_testfunctions[k][-r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
+                                                                    ngsolve.grad(beta_trialfunctions[m][q])[1] * beta0[n][p])
+                            ) for n in range(M)])for m in range(M)]))*ngsolve.dx
+                            # integration over seaward boundary for v-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+                                H * beta0[m][q] * vmom_testfunctions[k][-r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * beta0[m][q] * vmom_testfunctions[k][-r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            # integration over riverine boundary for v-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,-r)*(
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,-r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][-r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 
-                        # terms +r
-                        # interior domain integration for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]) - \
-                            H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1])
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]) - \
-                            H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]) - 
-                            H * umom_testfunctions[k][r] * (ngsolve.grad(alpha0[m][q])[0] * alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(alpha0[m][q])[1] * beta_trialfunctions[n][p]) -
-                            H * umom_testfunctions[k][r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(M)])for m in range(M)]))*ngsolve.dx
-                        # integration over seaward boundary for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            H * alpha0[m][q] * umom_testfunctions[k][r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * alpha0[m][q] * umom_testfunctions[k][r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        # integration over riverine boundary for u-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        # interior domain integration for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]) - \
-                            H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1])
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
-                            -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
-                                                beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]) - \
-                            H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + \
-                                                                    beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]) - 
-                            H * vmom_testfunctions[k][r] * (ngsolve.grad(beta0[m][q])[0] * alpha_trialfunctions[n][p] + \
-                                                                ngsolve.grad(beta0[m][q])[1] * beta_trialfunctions[n][p]) -
-                            H * vmom_testfunctions[k][r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
-                                                                ngsolve.grad(beta_trialfunctions[m][q])[1] * beta0[n][p])
-                        ) for n in range(M)])for m in range(M)]))*ngsolve.dx
-                        # integration over seaward boundary for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            H * beta0[m][q] * vmom_testfunctions[k][r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * beta0[m][q] * vmom_testfunctions[k][r] * (
-                                alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
-                            ) + 
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (
-                                alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
-                            )
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
-                        # integration over riverine boundary for v-momentum
-                        a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
-                        a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
-                            H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]
-                        ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            # terms +r
+                            # interior domain integration for u-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+                                -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]) - \
+                                H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1])
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
+                                -H * alpha0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]) - \
+                                H * alpha_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(umom_testfunctions[k][r])[1]) - 
+                                H * umom_testfunctions[k][r] * (ngsolve.grad(alpha0[m][q])[0] * alpha_trialfunctions[n][p] + \
+                                                                    ngsolve.grad(alpha0[m][q])[1] * beta_trialfunctions[n][p]) -
+                                H * umom_testfunctions[k][r] * (ngsolve.grad(alpha_trialfunctions[m][q])[0] * alpha0[n][p] + 
+                                                                    ngsolve.grad(alpha_trialfunctions[m][q])[1] * beta0[n][p])
+                            ) for n in range(M)])for m in range(M)]))*ngsolve.dx
+                            # integration over seaward boundary for u-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+                                H * alpha0[m][q] * umom_testfunctions[k][r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * alpha0[m][q] * umom_testfunctions[k][r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            # integration over riverine boundary for u-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * alpha_trialfunctions[m][q] * umom_testfunctions[k][r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            # interior domain integration for v-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+                                -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]) - \
+                                H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1])
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.dx
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k))*(
+                                -H * beta0[m][q] * (alpha_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + 
+                                                    beta_trialfunctions[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]) - \
+                                H * beta_trialfunctions[m][q] * (alpha0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[0] + \
+                                                                        beta0[n][p] * ngsolve.grad(vmom_testfunctions[k][r])[1]) - 
+                                H * vmom_testfunctions[k][r] * (ngsolve.grad(beta0[m][q])[0] * alpha_trialfunctions[n][p] + \
+                                                                    ngsolve.grad(beta0[m][q])[1] * beta_trialfunctions[n][p]) -
+                                H * vmom_testfunctions[k][r] * (ngsolve.grad(beta_trialfunctions[m][q])[0] * alpha0[n][p] + 
+                                                                    ngsolve.grad(beta_trialfunctions[m][q])[1] * beta0[n][p])
+                            ) for n in range(M)])for m in range(M)]))*ngsolve.dx
+                            # integration over seaward boundary for v-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+                                H * beta0[m][q] * vmom_testfunctions[k][r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * beta0[m][q] * vmom_testfunctions[k][r] * (
+                                    alpha_trialfunctions[n][p] * normal[0] + beta_trialfunctions[n][p] * normal[1]
+                                ) + 
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * (
+                                    alpha0[n][p] * normal[0] + beta0[n][p] * normal[1]
+                                )
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                            # integration over riverine boundary for v-momentum
+                            a += (advection_weighting_parameter * sum([sum([G1(m,n,k)*H3(p,q,r)*(
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
+                            a += (advection_weighting_parameter * sum([sum([-H3(p,q,r)*(G1(m,n,k)+G2(m,n,k)) * (
+                                H * beta_trialfunctions[m][q] * vmom_testfunctions[k][r] * normalalpha[n][p]
+                            ) for n in range(M)]) for m in range(M)])) * ngsolve.ds(BOUNDARY_DICT[RIVER])
 
 
 

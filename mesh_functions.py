@@ -5,8 +5,6 @@ import ngsolve
 import scipy.sparse as sp
 import copy
 
-import boundary_fitted_coordinates
-from spatial_parameter import SpatialParameter
 
 
 def mesh_to_coordinate_array(mesh):
@@ -46,8 +44,33 @@ def mesh2d_to_triangles(mesh):
     return np.array(triangles)
 
 
-def refine_mesh_by_elemental_integration(mesh: ngsolve.Mesh, cf: ngsolve.CoefficientFunction, K: float, p=1):
+def get_triangulation(mesh):
+    """Converts a netgen mesh to a matplotlib.tri-Triangularion object.
+    
+    Arguments:
+    
+        - mesh:     netgen mesh object.
+    """
+    coords = mesh_to_coordinate_array(mesh)
+    triangles = mesh2d_to_triangles(mesh)
+    triangulation = tri.Triangulation(coords[:,0], coords[:, 1], triangles)
+    return triangulation
 
+
+def refine_mesh_by_elemental_integration(mesh: ngsolve.Mesh, cf: ngsolve.CoefficientFunction, K: float, p=1):
+    """
+    Refines an ngsolve-Mesh by integrating a user-provided ngsolve.CoefficientFunction over each element.
+    If the p-norm of the coefficient function in a particular element exceeds the average p-norm among all elements by 
+    a factor of K, that element is marked for refinement. 
+
+    Arguments:
+
+    - mesh:     the mesh that will be refined;
+    - cf:       the coefficient function that is used for the mesh refinement rule;
+    - K:        threshold by which the p-norm in a particular element must exceed the average;
+    - p:        indicates which L^p-norm is used for the rule.    
+    
+    """
     if K <= 1:
         print("Please enter K>1")
         return
@@ -72,45 +95,28 @@ def refine_mesh_by_elemental_integration(mesh: ngsolve.Mesh, cf: ngsolve.Coeffic
     return counter
 
 
-def refine_mesh_bathygrad(mesh: ngsolve.Mesh, H: SpatialParameter, rho: SpatialParameter, threshold, SEM_order, p=1, numits=1):
-    bathy_gradnorm = ngsolve.sqrt(H.gradient_cf[0]*H.gradient_cf[0] + H.gradient_cf[1]*H.gradient_cf[1])
-    for _ in range(numits):
-        num_refined = refine_mesh_by_elemental_integration(mesh, bathy_gradnorm, threshold)
+def evaluate_CF_point(cf, mesh, x, y):
+    """
+    Evaluates 
+    
+    
+    """
+    return cf(mesh(x, y))
 
-        bfc = boundary_fitted_coordinates.generate_bfc(mesh, SEM_order, "diffusion", alpha=1)
-        H = SpatialParameter(H.fh, bfc)
-        rho = SpatialParameter(rho.fh, bfc)
+def evaluate_CF_range(cf, mesh, x, y):
+    return cf(mesh(x, y)).flatten()
 
-        bathy_gradnorm = ngsolve.sqrt(H.gradient_cf[0]*H.gradient_cf[0] + H.gradient_cf[1]*H.gradient_cf[1])
-
-        if num_refined == 0:
-            break
-
-
-def get_triangulation(mesh):
-    coords = mesh_to_coordinate_array(mesh)
-    triangles = mesh2d_to_triangles(mesh)
-    triangulation = tri.Triangulation(coords[:,0], coords[:, 1], triangles)
-    return triangulation
-
-
-def evaluate_gridfunction_point(gfu, mesh, x, y):
-    return gfu(mesh(x, y))
-
-def evaluate_gridfunction_range(gfu, mesh, x, y):
-    return gfu(mesh(x, y)).flatten()
-
-def plot_gridfunction_colormap(gfu, mesh, refinement_level=1, show_mesh=False, title='Gridfunction', **kwargs):
+def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridfunction', **kwargs):
     """"""
     triangulation = get_triangulation(mesh.ngmesh)
     refiner = tri.UniformTriRefiner(triangulation)
     refined_triangulation = refiner.refine_triangulation(subdiv=refinement_level)
     
-    eval_gfu = evaluate_gridfunction_range(gfu, mesh, refined_triangulation.x, refined_triangulation.y)
+    eval_cf = evaluate_CF_range(cf, mesh, refined_triangulation.x, refined_triangulation.y)
     fig, ax = plt.subplots()
     if show_mesh:
         ax.triplot(triangulation, linewidth=0.5, color='k', zorder=2)
-    colormesh = ax.tripcolor(refined_triangulation, eval_gfu, **kwargs)
+    colormesh = ax.tripcolor(refined_triangulation, eval_cf, **kwargs)
 
     ax.set_title(title)
     cbar = fig.colorbar(colormesh)
@@ -129,15 +135,15 @@ def plot_mesh2d(mesh, title=None, color='k', linewidth=0.5):
     plt.show()
 
 
-def evaluate_coefficient_function_point(func, mesh, x, y):
-    return func(mesh(x, y))
+# def evaluate_coefficient_function_point(func, mesh, x, y):
+#     return func(mesh(x, y))
 
 
-def evaluate_coefficient_function_range(func, mesh, xrange, yrange):
-    eval_func = np.zeros((xrange.shape[0], yrange.shape[0]))
-    for i in range(yrange.shape[0]):
-        eval_func[i, :] = func(mesh(xrange, np.ones_like(xrange)*yrange[i]))[:, 0]
-    return eval_func
+# def evaluate_coefficient_function_range(func, mesh, xrange, yrange):
+#     eval_func = np.zeros((xrange.shape[0], yrange.shape[0]))
+#     for i in range(yrange.shape[0]):
+#         eval_func[i, :] = func(mesh(xrange, np.ones_like(xrange)*yrange[i]))[:, 0]
+#     return eval_func
 
 
 def get_boundaryelement_vertices(mesh: ngsolve.Mesh, bnd):

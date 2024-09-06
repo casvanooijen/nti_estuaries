@@ -32,6 +32,8 @@ import pypardiso
 
 import TruncationBasis
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
+from boundary_fitted_coordinates import generate_bfc
+from spatial_parameter import SpatialParameter
 
 import define_weak_forms as weakforms
 from minusonepower import minusonepower
@@ -54,16 +56,19 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 
 def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = True, veddy_viscosity_assumption:str = 'constant', density:str = 'depth-independent',
-                 advection_epsilon:float = 1):
+                 advection_epsilon:float = 1, advection_influence_matrix = None):
     
     """Arguments: ('...'  means that there will possibly be future options added)
         
-        - bed_bc:                       indicates what type of boundary condition is used at the river bed ('no_slip' or ...);
-        - leading_order_surface (bool): flag to indicate whether non-linear effects stemming from the varying water surface should be included;
-        - veddy_viscosity_assumption:   structure of the vertical eddy viscosity parameter ('constant' or ...);
-        - density:                      indicates what type of water density field is used ('depth-independent' or ...);
-        - advection_epsilon (float):    scalar by which the advective terms in the momentum equations are multiplied; if set to zero, advective terms are skipped;     
-                                        if set to one, advective terms are fully included;       
+        - bed_bc:                                   indicates what type of boundary condition is used at the river bed ('no_slip' or ...);
+        - leading_order_surface (bool):             flag to indicate whether non-linear effects stemming from the varying water surface should be included;
+        - veddy_viscosity_assumption:               structure of the vertical eddy viscosity parameter ('constant' or ...);
+        - density:                                  indicates what type of water density field is used ('depth-independent' or ...);
+        - advection_epsilon (float):                scalar by which the advective terms in the momentum equations are multiplied; if set to zero, advective terms are skipped;     
+                                                    if set to one, advective terms are fully included;
+        - advection_influence_matrix (np.ndarray):  (imax+1) x (imax+1) - boolean matrix where element (i,j) indicates whether constituent i is influenced by constituent j through momentum advection (if possible);
+                                                    more precisely, in the equations for constituent i, any product of constituents that includes constituent j will not be present in the advective terms
+                                                    if element (i, j) is False, even if that product *should* physically be present;      
         
         """
     
@@ -72,8 +77,10 @@ def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = Tr
             'leading_order_surface': leading_order_surface,
             'veddy_viscosity_assumption': veddy_viscosity_assumption,
             'density': density,
-            'advection_epsilon': advection_epsilon
+            'advection_epsilon': advection_epsilon,
+            'advection_influence_matrix': advection_influence_matrix # the validity of this matrix is checked when imax is know, i.e. when the hydrodynamics object is initialised
         }
+    
 
     return options
 
@@ -97,6 +104,15 @@ class Hydrodynamics(object):
         self.loaded_from_files = False # flag that indicates whether the object is loaded from a saved solution; if it is, the spatial parameters are stored differently
         if self.vertical_basis is TruncationBasis.eigbasis_constantAv: # not so pretty but it works
             self.vertical_basis_name = "eigbasis_constantAv"
+
+        # check/generate advection_influence_matrix
+
+        if self.model_options['advection_influence_matrix'] is None:
+            self.model_options['advection_influence_matrix'] = np.full((self.imax + 1, self.imax + 1), True) # in this case, every constituent affects every other constituent through advection, as would be physical
+        elif self.model_options['advection_influence_matrix'].shape != (self.imax+1, self.imax+1):
+            raise ValueError(f"Invalidly shaped advection influence matrix, please provide a square boolean matrix of size imax+1: {self.imax+1}")
+        elif self.model_options['advection_influence_matrix'].dtype != bool:
+            raise ValueError(f"Invalid advection influence matrix, please provide a *boolean* matrix")
 
         self._setup_fem_space()
         self.nfreedofs = count_free_dofs(self.femspace)
@@ -199,7 +215,7 @@ class Hydrodynamics(object):
         self.DIC_testfunctions = DIC_testfunctions
 
 
-    def _setup_forms(self, advection_weighting_parameter, skip_nonlinear=False):
+    def _setup_forms(self, skip_nonlinear=False):
 
         self._get_normalvec()
 
@@ -336,6 +352,8 @@ class Hydrodynamics(object):
         options = {'vertical_basis_name': self.vertical_basis_name}
         options.update(self.model_options)
 
+        options['advection_influence_matrix'] = options['advection_influence_matrix'].tolist()
+
         f_options = open(f"{foldername}/options.json", 'x')
         json.dump(options, f_options, indent=4)
 
@@ -383,7 +401,43 @@ class Hydrodynamics(object):
         mesh_functions.save_gridfunction(self.solution_gfu, f"{foldername}/solution")
 
 
+    def hrefine(self, threshold: float, numits: int = 1, based_on = 'bathygrad'):
+        """
+        Refines the mesh a number of iterations based on the following rule: if the integrated 'based_on'-quantity in a particular element exceeds 
+        a threshold times the overall arithmetic average (of all elements) integrated 'based_on'-quantity in the mesh, that element is marked for
+        refinement. This procedure is performed a user-specified number of times.
 
+        Arguments:
+
+            - threshold (float):    factor larger than one that is used for the refinement rule;
+            - numits (int):         number of times the mesh is refined;
+            - based_on (str):       integrable quantity the rule is based on; options are 'bathygrad' which bases the rule on the norm of the bathymetry gradient; 
+        
+        """
+        if based_on == 'bathygrad':
+            if self.loaded_from_files:
+                bathy_gradnorm = ngsolve.sqrt(ngsolve.grad(self.spatial_physical_parameters['H'])[0] * ngsolve.grad(self.spatial_physical_parameters['H'])[0] + 
+                                            ngsolve.grad(self.spatial_physical_parameters['H'])[1] * ngsolve.grad(self.spatial_physical_parameters['H'])[1])
+            else:
+                bathy_gradnorm = ngsolve.sqrt(self.spatial_physical_parameters['H'].gradient_cf[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + 
+                                            self.spatial_physical_parameters['H'].gradient_cf[1] * self.spatial_physical_parameters['H'].gradient_cf[1])
+        else:
+            raise ValueError("Invalid value for 'based_on'. Please choose from the following options: 'bathygrad'.")
+            
+        for _ in range(numits):
+
+            num_refined = mesh_functions.refine_mesh_by_elemental_integration(self.mesh, bathy_gradnorm, threshold)
+
+            if not self.loaded_from_files:
+                for name, param in self.spatial_physical_parameters.items(): # SpatialParameter-objects need to be redefined on the new mesh
+                    bfc = generate_bfc(self.mesh, self.order, 'diffusion')
+                    self.spatial_physical_parameters[name] = SpatialParameter(param.fh, bfc)
+
+                bathy_gradnorm = ngsolve.sqrt(self.spatial_physical_parameters['H'].gradient_cf[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + 
+                                              self.spatial_physical_parameters['H'].gradient_cf[1] * self.spatial_physical_parameters['H'].gradient_cf[1])
+                
+            if num_refined == 0:
+                break
 
 
 
@@ -611,7 +665,8 @@ class Hydrodynamics(object):
             print(f"Epsilon = {advection_weighting_parameter_list[i]}\n")
             print(f"Generating weak forms of the PDE system\n")
 
-            self._setup_forms(advection_weighting_parameter_list[i], skip_nonlinear)
+            self.model_options['advection_epsilon'] = advection_weighting_parameter_list[i]
+            self._setup_forms(advection_weighting_parameter_list[i] == 0)
 
             # Combine bilinear and linear forms because Newton solver only works with a complete bilinear form
             print(f"Solving using Newton-Raphson method with {maxits} iterations max. and error at most {tol}, using the {method.upper()} solver.\n")
@@ -632,7 +687,6 @@ class Hydrodynamics(object):
         # reorder components in the gridfunction so that they can be worked with more easily
         print(f"Solution process complete.")
         self._restructure_solution()
-        self._construct_depth_averaged_velocities()
 
         if return_testvalues:
             return resnorm, invtime
@@ -657,6 +711,8 @@ def load_hydrodynamics(foldername):
         vertical_basis = TruncationBasis.eigbasis_constantAv
     else:
         raise ValueError(f"Could not load hydrodynamics object: vertical basis name {model_options['vertical_basis_name']} invalid.")
+    
+    model_options['advection_influence_matrix'] = np.array(model_options['advection_influence_matrix'])
     
     # params
 

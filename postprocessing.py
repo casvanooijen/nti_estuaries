@@ -4,9 +4,11 @@ import matplotlib.tri as tri
 import matplotlib.animation as anim
 import ngsolve
 
-from hydrodynamics import Hydrodynamics
+from hydrodynamics import Hydrodynamics, count_free_dofs
 from copy import copy
 from minusonepower import minusonepower
+
+from mesh_functions import *
 
 
 ## MESH FUNCTIONS ##
@@ -15,66 +17,66 @@ def amp(gfu):
     # 29-7-2020: Old sqrt(gfu.real ** 2 + gfu.imag ** 2)
     return ngsolve.sqrt(gfu*ngsolve.Conj(gfu)).real
 
-def count_free_dofs(fes):
-    i = 0
-    for isFree in fes.FreeDofs():
-        i = i + isFree
-    return i
+# def count_free_dofs(fes):
+#     i = 0
+#     for isFree in fes.FreeDofs():
+#         i = i + isFree
+#     return i
 
 
-def mesh_to_coordinate_array(mesh):
-    """Generates a coordinate array from a netgen mesh.
+# def mesh_to_coordinate_array(mesh):
+#     """Generates a coordinate array from a netgen mesh.
     
-    Args:
+#     Args:
 
-    - mesh:      netgen mesh object
-    """
+#     - mesh:      netgen mesh object
+#     """
 
-    coords = [[]]
-    for p in mesh.Points():
-        x, y, z = p.p
-        coords[-1] += [x, y, z]
-        coords.append([])
+#     coords = [[]]
+#     for p in mesh.Points():
+#         x, y, z = p.p
+#         coords[-1] += [x, y, z]
+#         coords.append([])
 
-    coords = coords[:-1] # Delete last empty list        
-    return np.array(coords)
+#     coords = coords[:-1] # Delete last empty list        
+#     return np.array(coords)
 
 
-def mesh2d_to_triangles(mesh):
-    """Gives an array containing the indices of the triangle vertices in mesh.
+# def mesh2d_to_triangles(mesh):
+#     """Gives an array containing the indices of the triangle vertices in mesh.
     
-    Args:
+#     Args:
     
-    - mesh:     netgen mesh object.
-    """
+#     - mesh:     netgen mesh object.
+#     """
 
-    triangles = [[]]
-    for el in mesh.Elements2D():
-        # Netgen does not store integers in el.vertices, but netgen.libngpy._meshing.PointId objects; first we convert
-        vertices = [v.nr - 1 for v in el.vertices] # PointId objects start counting at 1
-        triangles[-1] += vertices
-        triangles.append([])
+#     triangles = [[]]
+#     for el in mesh.Elements2D():
+#         # Netgen does not store integers in el.vertices, but netgen.libngpy._meshing.PointId objects; first we convert
+#         vertices = [v.nr - 1 for v in el.vertices] # PointId objects start counting at 1
+#         triangles[-1] += vertices
+#         triangles.append([])
     
-    triangles = triangles[:-1] # Delete last empty list
-    return np.array(triangles)
+#     triangles = triangles[:-1] # Delete last empty list
+#     return np.array(triangles)
 
 
-def get_triangulation(mesh):
-    coords = mesh_to_coordinate_array(mesh)
-    triangles = mesh2d_to_triangles(mesh)
-    triangulation = tri.Triangulation(coords[:,0], coords[:, 1], triangles)
-    return triangulation
+# def get_triangulation(mesh):
+#     coords = mesh_to_coordinate_array(mesh)
+#     triangles = mesh2d_to_triangles(mesh)
+#     triangulation = tri.Triangulation(coords[:,0], coords[:, 1], triangles)
+#     return triangulation
 
-## EVALUATE GENERAL NGSOLVE COEFFICIENT FUNCTIONS ##
+# ## EVALUATE GENERAL NGSOLVE COEFFICIENT FUNCTIONS ##
 
-def evaluate_CF_point(cf, mesh, x, y):
-    return cf(mesh(x, y))
+# def evaluate_CF_point(cf, mesh, x, y):
+#     return cf(mesh(x, y))
 
-def evaluate_CF_range(cf, mesh, x, y):
-    return cf(mesh(x, y)).flatten()
+# def evaluate_CF_range(cf, mesh, x, y):
+#     return cf(mesh(x, y)).flatten()
 
 
-## EVALUATE FLOW VELOCITIES ON DIFFERENT TYPES OF DOMAINS ##
+## EVALUATE ON DIFFERENT TYPES OF DOMAINS ##
 
 def evaluate_vertical_structure_at_point(hydro, quantity_function, p, num_vertical_points):
     sigma_range = np.linspace(-1, 0, num_vertical_points)

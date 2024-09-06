@@ -61,7 +61,7 @@ def refine_mesh_by_elemental_integration(mesh: ngsolve.Mesh, cf: ngsolve.Coeffic
     """
     Refines an ngsolve-Mesh by integrating a user-provided ngsolve.CoefficientFunction over each element.
     If the p-norm of the coefficient function in a particular element exceeds the average p-norm among all elements by 
-    a factor of K, that element is marked for refinement. 
+    a factor of K, that element is marked for refinement. Returns how many elements were refined.
 
     Arguments:
 
@@ -97,17 +97,48 @@ def refine_mesh_by_elemental_integration(mesh: ngsolve.Mesh, cf: ngsolve.Coeffic
 
 def evaluate_CF_point(cf, mesh, x, y):
     """
-    Evaluates 
-    
+    Evaluates an ngsolve CoefficientFunction, of which the ngsolve GridFunction is a child class, at a point (x,y).
+    Returns function value.
+
+    Arguments:
+
+        - cf:       Coefficient function to be evaluated;
+        - mesh:     ngsolve mesh that contains (x,y);
+        - x:        x-coordinate of evaluation point;
+        - y:        y-coordinate of evaluation point;
     
     """
     return cf(mesh(x, y))
 
 def evaluate_CF_range(cf, mesh, x, y):
+    """
+    Evaluates an ngsolve CoefficientFunction, of which the ngsolve GridFunction is a child class, at a range of points
+    contained in two arrays x and y. Returns array of function values.
+
+    Arguments:
+        
+        - cf:       Coefficient function to be evaluated;
+        - mesh:     mesh that contains all points in (x,y);
+        - x:        array of x-values;
+        - y:        array of y-values;
+    
+    """
     return cf(mesh(x, y)).flatten()
 
 def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridfunction', **kwargs):
-    """"""
+    """
+    Plots a simple colormap of a Coefficient function on a refined display mesh.
+
+    Arguments:
+
+        - cf:                   Coefficient function to be plotted;
+        - mesh:                 computational mesh that is refined for the display mesh; 
+        - refinement_level:     how many times the mesh is refined to get a display mesh on which the function is evaluated;
+        - show_mesh:            if True, overlays the colormap with the mesh;
+        - title:                title of the plot;
+        - **kwargs:             keyword arguments for matplotlib.pyplot.tripcolor
+    
+    """
     triangulation = get_triangulation(mesh.ngmesh)
     refiner = tri.UniformTriRefiner(triangulation)
     refined_triangulation = refiner.refine_triangulation(subdiv=refinement_level)
@@ -124,6 +155,17 @@ def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridf
 
 
 def plot_mesh2d(mesh, title=None, color='k', linewidth=0.5):
+    """
+    Plots a wireframe of an ngsolve Mesh.
+
+    Arguments:
+
+        - mesh:         mesh to be plotted;
+        - title:        title of the plot;
+        - color:        color of the wireframe;
+        - linewidth:    linewidth of the wireframe;
+    
+    """
     coords = mesh_to_coordinate_array(mesh.ngmesh)
     triangles = mesh2d_to_triangles(mesh.ngmesh)
     triangulation = tri.Triangulation(coords[:, 0], coords[:, 1], triangles)
@@ -147,7 +189,15 @@ def plot_mesh2d(mesh, title=None, color='k', linewidth=0.5):
 
 
 def get_boundaryelement_vertices(mesh: ngsolve.Mesh, bnd):
-    """Returns a list of (x,y)-coordinates of all the gridpoints in a certain part of the mesh boundary"""
+    """Returns a list of (x,y)-coordinates of all the gridpoints in a certain part of the mesh boundary.
+    
+    Arguments:
+    
+        - mesh:     the considered mesh;
+        - bnd:      the name of the considered boundary;
+        
+        
+    """
 
     IDlist = []
     for el in mesh.Boundaries(bnd).Elements():
@@ -163,12 +213,23 @@ def get_boundaryelement_vertices(mesh: ngsolve.Mesh, bnd):
     return plist
 
 
-def save_gridfunction(gfu: ngsolve.GridFunction, filename, format='npy'):
-    gfu_vec_array = gfu.vec.FV().NumPy()
+def save_gridfunction(gf: ngsolve.GridFunction, filename, format='npy'):
+    """
+    Converts an ngsolve GridFunction to a numpy array and subsequently saves it.
+
+    Arguments:
+
+        - gf:           ngsolve GridFunction to be saved;
+        - filename:     name of the file in which the GridFunction is saved;
+        - format:       file format; choices are 'npy' for a .npy-file and 'txt' for a .txt-file. 
+    
+    
+    """
+    gf_vec_array = gf.vec.FV().NumPy()
     if format == 'npy':
-        np.save(filename, gfu_vec_array)
+        np.save(filename, gf_vec_array)
     elif format == 'txt':
-        np.savetxt(filename, gfu_vec_array)
+        np.savetxt(filename, gf_vec_array)
     else:
         raise ValueError(f"Invalid format {format}: please choose npy or txt")
 
@@ -184,6 +245,16 @@ def save_gridfunction(gfu: ngsolve.GridFunction, filename, format='npy'):
 
 
 def load_basevector(vec: ngsolve.BaseVector, filename, format = 'npy'):
+    """
+    Sets the value of an ngsolve BaseVector using a file.
+
+    Arguments:
+        - vec:              ngsolve BaseVector to be set;
+        - filename:         name of the file;
+        - format:           format of the file; choices are 'npy' for .npy-files and 'txt' for .txt-files;
+    
+    
+    """
     if format == 'npy':
         array = np.load(filename)
     elif format == 'txt':
@@ -208,7 +279,11 @@ def load_basevector(vec: ngsolve.BaseVector, filename, format = 'npy'):
 
 def get_dirichletdof_indices(freedofs: ngsolve.BitArray):
     """Returns a list of indices corresponding to constrained (Dirichlet) degrees of freedom, based on a 
-    bitarray where 0 denotes a constrained DOF."""
+    bitarray where 0 denotes a constrained DOF.
+    
+    Arguments:
+    
+        - freedofs:     bitarray determining the free degrees of freedom, obtainable by using the ngsolve method femspace.FreeDofs()"""
     
     indices = []
     counter = 0
@@ -220,15 +295,25 @@ def get_dirichletdof_indices(freedofs: ngsolve.BitArray):
     
 
 def get_csr_matrix(mat: ngsolve.BaseMatrix):
+    """Converts an ngsolve BaseMatrix to a scipy sparse matrix in CSR-format. Returns the CSR-matrix
+    
+    Arguments:
+
+        - mat:      to-be-converted BaseMatrix      
+        
+    """
     rows, cols, vals = mat.COO()
     return sp.csr_matrix((vals, (rows, cols)))
 
 
-def set_complex_gridfunction(mesh, order, real, imag, dirichlet=None):
-    V = ngsolve.H1(mesh, order, dirichlet=dirichlet, complex=True)
-    gf = ngsolve.GridFunction(V)
+# def set_complex_gridfunction(mesh, order, real, imag, dirichlet=None):
+#     """
+#         Constructs 
+#     """
+#     V = ngsolve.H1(mesh, order, dirichlet=dirichlet, complex=True)
+#     gf = ngsolve.GridFunction(V)
 
-    gf.Set(real + 1j*imag)
+#     gf.Set(real + 1j*imag)
 
 
 

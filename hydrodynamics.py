@@ -43,6 +43,14 @@ import mesh_functions
 
 
 def count_free_dofs(fes):
+    """
+    Returns the number of free degrees of freedom in an ngsolve Finite Element space.
+
+    Arguments:
+
+        - fes:      ngsolve Finite element space.   
+    
+    """
     i = 0
     for isFree in fes.FreeDofs():
         i = i + isFree
@@ -50,6 +58,16 @@ def count_free_dofs(fes):
 
 
 def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
+    """
+    Sets the essential (non-free) degrees of freedom of an ngsolve BaseVector to zero.
+
+    Arguments:
+        
+        - vec:          ngsolve BaseVector;
+        - freedofs:     bitarray indicating the free degrees of freedom, obtainable via calling the method FiniteElementSpace.FreeDofs();
+    
+    
+    """
     for i, free in enumerate(freedofs):
         if not free:
             vec[i] = 0.
@@ -58,7 +76,11 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = True, veddy_viscosity_assumption:str = 'constant', density:str = 'depth-independent',
                  advection_epsilon:float = 1, advection_influence_matrix = None):
     
-    """Arguments: ('...'  means that there will possibly be future options added)
+    """
+    
+    Returns a dictionary of all the available model options. Safer than manually creating this dictionary.
+    
+    Arguments: ('...'  means that there will possibly be future options added)
         
         - bed_bc:                                   indicates what type of boundary condition is used at the river bed ('no_slip' or ...);
         - leading_order_surface (bool):             flag to indicate whether non-linear effects stemming from the varying water surface should be included;
@@ -86,6 +108,43 @@ def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = Tr
 
 
 class Hydrodynamics(object):
+
+    """
+    Class that collects all necessary components to solve the hydrodynamic model and sets up the matrix. Also contains solution methods, but this
+    will later be separate.
+
+    Attributes:
+
+        - mesh (ngsolve.Mesh):                                  mesh on which the model is defined;
+        - model_options (dict):                                 dictionary of model options, created using select_model_options;
+        - imax (int):                                           number of tidal constituents taken into account, excluding subtidal;
+        - M (int):                                              number of vertical basis functions taken into account;
+        - order (int):                                          order of the spectral element basis (Dubiner basis);
+        - time_basis (TruncationBasis):                         harmonic time basis;
+        - vertical_basis (TruncationBasis):                     vertical basis;
+        - vertical_basis_name (str):                            name of the vertical basis if it is a default one from TruncationBasis.py
+        - constant_physical_parameters (dict):                  dictionary containing values of constant physical parameters;
+        - spatial_physical_parameters (dict):                   dictionary containing spatially varying physical parameters, such as
+                                                                bathymetry, in the form of SpatialParameter objects;
+        - loaded_from_files (bool):                             flag indicating whether this hydrodynamics-object was manually created or loaded in;
+        - nfreedofs (int):                                      number of free degrees of freedom;
+        - femspace (ngsolve.comp.H1):                           finite element space associated with this mesh and parameter set;
+        - n:                                                    ngsolve normal vector to the boundary of the mesh;
+        - alpha_trialfunctions (dict):                          dictionary of dictionaries of trial functions (ngsolve.comp.ProxyFunction) representing all the coefficients alpha_{mi} that form along-channel velocity u;
+        - umom_testfunctions (dict):                            dictionary of dictionaries of test functions (ngsolve.comp.ProxyFunction) for the along-channel momentum equation;
+        - beta_trialfunctions (dict):                           dictionary of dictionaries of trial functions representing all the coefficients beta_{mi} that form cross-channel velocity v;
+        - vmom_testfunctions (dict):                            dictionary of dictionaries of test functions for the cross-channel momentum equation;
+        - gamma_trialfunctions (dict):                          dictionary of trial functions representing all the coefficients gamma_{i} that form the water surface zeta;
+        - DIC_trialfunctions (dict):                            dictionary of test functions for the Depth-Integrated Continuity equation;
+        - total_bilinearform (ngsolve.comp.BilinearForm):       bilinear form of the entire system of projected PDEs; not necessarily bilinear, but ngsolve refers to any weak form as a bilinear form;
+        - solution_gf (ngsolve.GridFunction):                   gridfunction that contains the entire vector solution of the system of PDEs;
+        - alpha_solution (dict):                                dictionary of dictionaries of the solutions for the coefficients alpha_{mi};
+        - beta_solution (dict):                                 dictionary of dictionaries of the solutions for the coefficients beta_{mi};
+        - gamma_solution (dict):                                dictionary of the solutions for the coefficients gamma_{i};
+        - seaward_forcing (SeawardForcing):                     SeawardForcing-object containing the details of the seaward boundary condition;
+        - riverine_forcing (RiverineForcing):                   RiverineForcing-object containing the details of the riverine (landward) boundary condition;
+    
+    """
 
     def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int, 
                  time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
@@ -122,16 +181,16 @@ class Hydrodynamics(object):
         
         # Get norms of the basis functions
 
-        zero_gridfunction = ngsolve.GridFunction(self.femspace)
-        for k in range(self.num_equations):
-            zero_gridfunction.components[k].Set(0)
+        # zero_gridfunction = ngsolve.GridFunction(self.femspace)
+        # for k in range(self.num_equations):
+        #     zero_gridfunction.components[k].Set(0)
 
-        self.fem_basis_norms = np.zeros(self.nfreedofs)
-        # for n in range(self.nfreedofs):
-        for n in range(1):
-            r = zero_gridfunction.vec.CreateVector()
-            r[n] = 1
-            self.fem_basis_norms[n] = ngsolve.InnerProduct(r, r)
+        # self.fem_basis_norms = np.zeros(self.nfreedofs)
+        # # for n in range(self.nfreedofs):
+        # for n in range(1):
+        #     r = zero_gridfunction.vec.CreateVector()
+        #     r[n] = 1
+        #     self.fem_basis_norms[n] = ngsolve.InnerProduct(r, r)
             
 
 
@@ -243,21 +302,21 @@ class Hydrodynamics(object):
         self.gamma_solution = dict()
 
         for m in range(self.M):
-            self.alpha_solution[m][0] = self.solution_gfu.components[m * (2*self.imax + 1)]
-            self.beta_solution[m][0] = self.solution_gfu.components[(self.M + m) * (2*self.imax + 1)]
+            self.alpha_solution[m][0] = self.solution_gf.components[m * (2*self.imax + 1)]
+            self.beta_solution[m][0] = self.solution_gf.components[(self.M + m) * (2*self.imax + 1)]
             
             for q in range(1, self.imax + 1):
-                self.alpha_solution[m][-q] = self.solution_gfu.components[m * (2*self.imax + 1) + q]
-                self.alpha_solution[m][q] = self.solution_gfu.components[m * (2*self.imax + 1) + self.imax + q]
+                self.alpha_solution[m][-q] = self.solution_gf.components[m * (2*self.imax + 1) + q]
+                self.alpha_solution[m][q] = self.solution_gf.components[m * (2*self.imax + 1) + self.imax + q]
 
-                self.beta_solution[m][-q] = self.solution_gfu.components[(self.M + m) * (2*self.imax + 1) + q]
-                self.beta_solution[m][q] = self.solution_gfu.components[(self.M + m) * (2*self.imax + 1) + self.imax + q]
+                self.beta_solution[m][-q] = self.solution_gf.components[(self.M + m) * (2*self.imax + 1) + q]
+                self.beta_solution[m][q] = self.solution_gf.components[(self.M + m) * (2*self.imax + 1) + self.imax + q]
         
-        self.gamma_solution[0] = self.solution_gfu.components[2*(self.M)*(2*self.imax+1)]
+        self.gamma_solution[0] = self.solution_gf.components[2*(self.M)*(2*self.imax+1)]
 
         for q in range(1, self.imax + 1):
-            self.gamma_solution[-q] = self.solution_gfu.components[2*(self.M)*(2*self.imax+1) + q]
-            self.gamma_solution[q] = self.solution_gfu.components[2*(self.M)*(2*self.imax+1) + self.imax + q]
+            self.gamma_solution[-q] = self.solution_gf.components[2*(self.M)*(2*self.imax+1) + q]
+            self.gamma_solution[q] = self.solution_gf.components[2*(self.M)*(2*self.imax+1) + self.imax + q]
 
 
     # def _construct_velocities(self): # THIS FUNCTIONALITY IS PERFORMED BY postprocessing.py
@@ -322,15 +381,15 @@ class Hydrodynamics(object):
     # Public methods
 
     # def add_solution(self, filename):
-    #     self.solution_gfu = ngsolve.GridFunction(self.femspace)
-    #     mesh_functions.set_basevector_from_txt(self.solution_gfu.vec, filename)
+    #     self.solution_gf = ngsolve.GridFunction(self.femspace)
+    #     mesh_functions.set_basevector_from_txt(self.solution_gf.vec, filename)
     #     self._restructure_solution()
     #     # self._construct_velocities()
     #     self._construct_depth_averaged_velocities()
 
 
     # def save_solution(self, filename):
-    #     mesh_functions.save_gridfunction_to_txt(self.solution_gfu, filename)
+    #     mesh_functions.save_gridfunction_to_txt(self.solution_gf, filename)
 
     def save(self, foldername):
         """Saves the hydrodynamics object to a collection of files contained in a folder. Only possible if the Fourier/vertical bases are chosen from the predefined 
@@ -398,7 +457,7 @@ class Hydrodynamics(object):
 
         # solution
 
-        mesh_functions.save_gridfunction(self.solution_gfu, f"{foldername}/solution")
+        mesh_functions.save_gridfunction(self.solution_gf, f"{foldername}/solution")
 
 
     def hrefine(self, threshold: float, numits: int = 1, based_on = 'bathygrad'):
@@ -472,7 +531,7 @@ class Hydrodynamics(object):
 
 
     def SolveNewton(self, advection_weighting_parameter, tol, maxitns, printing=True, print_cond=False, autodiff=False, method='pardiso', return_vals=False):
-        u_n = copy.copy(self.solution_gfu)
+        u_n = copy.copy(self.solution_gf)
         
         # mesh_functions.plot_gridfunction_colormap(u_n, u_n.space.mesh, refinement_level=3)
         for i in range(maxitns):
@@ -489,12 +548,12 @@ class Hydrodynamics(object):
             
             residual = u_n.vec.CreateVector()
             apply_start = timeit.default_timer()
-            self.total_bilinearform.Apply(self.solution_gfu.vec, residual)
+            self.total_bilinearform.Apply(self.solution_gf.vec, residual)
             apply_time = timeit.default_timer() - apply_start
             homogenise_essential_Dofs(residual, self.femspace.FreeDofs())
             
 
-            stop_criterion_value = abs(ngsolve.InnerProduct(self.solution_gfu.vec - u_n.vec, residual))
+            stop_criterion_value = abs(ngsolve.InnerProduct(self.solution_gf.vec - u_n.vec, residual))
             residual_norm_sq = ngsolve.InnerProduct(residual, residual)
 
             # residual_array = residual.FV().NumPy()
@@ -511,7 +570,7 @@ class Hydrodynamics(object):
             # for k in range(5):
             #     mesh_functions.plot_gridfunction_colormap(residual_gf.components[k], self.mesh, refinement_level=3, title=f'Iteration {i}, component {k}')
 
-            u_n = copy.copy(self.solution_gfu)
+            u_n = copy.copy(self.solution_gf)
 
             # mesh_functions.plot_gridfunction_colormap(u_n, u_n.space.mesh, refinement_level=3)
 
@@ -549,8 +608,8 @@ class Hydrodynamics(object):
 
         # Jacobi_pre_mat = a.mat.CreateSmoother(self.femspace.FreeDofs())
 
-        rhs = self.solution_gfu.vec.CreateVector()
-        self.total_bilinearform.Apply(self.solution_gfu.vec, rhs)
+        rhs = self.solution_gf.vec.CreateVector()
+        self.total_bilinearform.Apply(self.solution_gf.vec, rhs)
 
         du = ngsolve.GridFunction(self.femspace)
         for i in range(self.femspace.dim):
@@ -595,7 +654,7 @@ class Hydrodynamics(object):
         print(f'   Inversion took {inversion_time} seconds')
         print(f'   Assembly took {assembly_time} seconds')
 
-        self.solution_gfu.vec.data = self.solution_gfu.vec.data - du.vec.data
+        self.solution_gf.vec.data = self.solution_gf.vec.data - du.vec.data
         if return_invtime:
             return inversion_time
 
@@ -604,8 +663,8 @@ class Hydrodynamics(object):
     def NewtonIteration_autodiff(self, u_n, method='pardiso'):
         self._restructure_solution()
 
-        rhs = self.solution_gfu.vec.CreateVector()
-        self.total_bilinearform.Apply(self.solution_gfu.vec, rhs)
+        rhs = self.solution_gf.vec.CreateVector()
+        self.total_bilinearform.Apply(self.solution_gf.vec, rhs)
 
         autodiff_start = timeit.default_timer()
         self.total_bilinearform.AssembleLinearization(u_n)
@@ -626,7 +685,7 @@ class Hydrodynamics(object):
         print(f'   Automatic differentiation took {autodiff_time} seconds,')
         print(f'   Inversion took {inversion_time} seconds.')
 
-        self.solution_gfu.vec.data = self.solution_gfu.vec.data - du.vec.data
+        self.solution_gf.vec.data = self.solution_gf.vec.data - du.vec.data
 
         
 
@@ -656,10 +715,10 @@ class Hydrodynamics(object):
             sol.components[2*(self.M)*(2*self.imax+1) + q].Set(self.seaward_forcing.boundaryCFdict[-q], ngsolve.BND)
             sol.components[2*(self.M)*(2*self.imax+1) + self.imax + q].Set(self.seaward_forcing.boundaryCFdict[q], ngsolve.BND)
 
-        self.solution_gfu = sol
+        self.solution_gf = sol
 
         num_continuation_steps = len(advection_weighting_parameter_list)
-        self.epsilon = advection_weighting_parameter_list[-1] # save the value of epsilon for later use
+        # self.epsilon = advection_weighting_parameter_list[-1] # save the value of epsilon for later use
 
         for i in range(num_continuation_steps):
             print(f"Epsilon = {advection_weighting_parameter_list[i]}\n")
@@ -748,8 +807,8 @@ def load_hydrodynamics(foldername):
         hydro.spatial_physical_parameters[param_name] = gf
 
     # add solution
-    hydro.solution_gfu = ngsolve.GridFunction(hydro.femspace)
-    mesh_functions.load_basevector(hydro.solution_gfu.vec, f'{foldername}/solution.npy')
+    hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
+    mesh_functions.load_basevector(hydro.solution_gf.vec, f'{foldername}/solution.npy')
 
     hydro._restructure_solution()
 

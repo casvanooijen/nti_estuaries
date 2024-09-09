@@ -74,7 +74,7 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 
 def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = True, veddy_viscosity_assumption:str = 'constant', density:str = 'depth-independent',
-                 advection_epsilon:float = 1, advection_influence_matrix = None):
+                 advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1):
     
     """
     
@@ -90,7 +90,9 @@ def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = Tr
                                                     if set to one, advective terms are fully included;
         - advection_influence_matrix (np.ndarray):  (imax+1) x (imax+1) - boolean matrix where element (i,j) indicates whether constituent i is influenced by constituent j through momentum advection (if possible);
                                                     more precisely, in the equations for constituent i, any product of constituents that includes constituent j will not be present in the advective terms
-                                                    if element (i, j) is False, even if that product *should* physically be present;      
+                                                    if element (i, j) is False, even if that product *should* physically be present;    
+        - x_scaling (float):                        factor [m] by which the input geometry should be scaled in the x-direction; this variable adds scaling factors in the equations to compensate for this; default = 1
+        - y_scaling (float):                        factor [m] by which the input geometry should be scaled in the y-direction; default = 1
         
         """
     
@@ -100,7 +102,9 @@ def select_model_options(bed_bc:str = 'no-slip', leading_order_surface:bool = Tr
             'veddy_viscosity_assumption': veddy_viscosity_assumption,
             'density': density,
             'advection_epsilon': advection_epsilon,
-            'advection_influence_matrix': advection_influence_matrix # the validity of this matrix is checked when imax is know, i.e. when the hydrodynamics object is initialised
+            'advection_influence_matrix': advection_influence_matrix, # the validity of this matrix is checked when imax is know, i.e. when the hydrodynamics object is initialised
+            'x_scaling': x_scaling,
+            'y_scaling': y_scaling
         }
     
 

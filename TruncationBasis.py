@@ -292,6 +292,7 @@ def harmonic_time_basis(sigma):
     
     return time_basis
 
+unit_harmonic_time_basis = harmonic_time_basis(1)
 
 
 class Projection(object):

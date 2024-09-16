@@ -8,7 +8,7 @@ from hydrodynamics import Hydrodynamics, select_model_options
 import boundary_fitted_coordinates
 from spatial_parameter import SpatialParameter
 from postprocessing import *
-from TruncationBasis import eigbasis_constantAv, harmonic_time_basis
+from TruncationBasis import eigbasis_constantAv, unit_harmonic_time_basis
 import mesh_functions
 from geometry.geometries import *
 from geometry.create_geometry import parametric_geometry, WALLDOWN, WALLUP, RIVER, SEA, BOUNDARY_DICT
@@ -23,9 +23,10 @@ B = 3e3 # width of estuary in m
 
 # create geometry
 
-geometrycurves = parametric_rectangle(B, L) # collection of parametric curves describing the boundary of the estuary
+geometrycurves = parametric_rectangle(1, 1) # collection of parametric curves describing the boundary of the estuary 
+# we use a unit square because the equations are scaled accordingly
 
-maxh_global = 1e3 # global element size
+maxh_global = 0.1 # global element size
 
 boundary_parameter_partition_dict = {WALLDOWN: [0,1], WALLUP: [0,1], RIVER: [0,1], SEA: [0,1]}  # partition boundary into segments, assuming it starts at 0 and ends at 1
 boundary_maxh_dict = {WALLDOWN: [maxh_global], WALLUP: [maxh_global], RIVER: [maxh_global], SEA: [maxh_global]} # set element size for each partition: allows for variable mesh sizes!
@@ -76,13 +77,17 @@ def rho(xi, eta): # water density following the hyperbolic tangent profile from 
     S = Ssea / 2 * (1 - sympy.tanh((xi-xi_c)/xi_L))
     return rho0 * (1 + beta * S)
 
+def R(xi, eta):
+    return 0 * xi
+
 H_sp = SpatialParameter(H, bfc)
 rho_sp = SpatialParameter(rho, bfc)
+R_sp = SpatialParameter(R, bfc)
 
 # STEP 3: Define expansion bases ============================================================================
 
 vertical_basis = eigbasis_constantAv
-time_basis = harmonic_time_basis(sigma)
+time_basis = unit_harmonic_time_basis
 
 
 # STEP 4 : Create Hydrodynamics object ======================================================================
@@ -90,18 +95,20 @@ time_basis = harmonic_time_basis(sigma)
 # set options
 
 model_options = select_model_options(bed_bc='no_slip',
-                                     leading_order_surface=True,
+                                     surface_in_sigma=False,
                                      veddy_viscosity_assumption='constant', 
                                      density='depth-independent',
                                      advection_epsilon=0,
                                      advection_influence_matrix=np.array([[True, True],
-                                                                          [False, False]]))
+                                                                          [False, False]]),
+                                     x_scaling=L,
+                                     y_scaling=B)
 
 # create object
 
 hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f)
-hydro.set_spatial_physical_parameters(H_sp, rho_sp)
+hydro.set_spatial_physical_parameters(H=H_sp, density=rho_sp, R=R_sp)
 
 # refine mesh based on bathymetry gradient
 

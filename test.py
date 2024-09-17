@@ -132,8 +132,8 @@ hydro.set_riverine_boundary_condition(discharge_amplitude_list, discharge_phase_
 
 advection_epsilon_list = [0] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
 
-hydro.solve(advection_epsilon_list, skip_nonlinear=True, maxits=10, tol=1e-9, method='pardiso')
-hydro.save('test_solution')
+hydro.solve(advection_epsilon_list, skip_nonlinear=True, maxits=10, tol=1e-7, method='pardiso', time_of_integration='between')
+# hydro.save('test_solution')
 
 
 # STEP 6: Postprocessing =====================================================================================
@@ -151,14 +151,14 @@ p2 = np.array([0.5,-0.5])
 
 # create plots
 postpro.plot_colormap(postpro.u_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal along-channel velocity", clabel="Velocity [m/s]")
-postpro.plot_colormap(postpro.v_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal cross-channel velocity", clabel="Velocity [m/s]")
+# postpro.plot_colormap(postpro.v_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal cross-channel velocity", clabel="Velocity [m/s]")
 postpro.plot_colormap(postpro.gamma_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of semidiurnal surface elevation", clabel="Surface elevation [m]")
-postpro.plot_colormap(postpro.u_DA(0), refinement_level=4, show_mesh=False, title="Residual along-channel velocity", clabel="Velocity [m/s]", center_range=True, cmap='RdBu')
+# postpro.plot_colormap(postpro.u_DA(0), refinement_level=4, show_mesh=False, title="Residual along-channel velocity", clabel="Velocity [m/s]", center_range=True, cmap='RdBu')
 
 postpro.plot_vertical_cross_section(lambda sig: postpro.u_abs(1, sig), "Amplitude of semidiurnal along-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
-postpro.plot_vertical_cross_section(lambda sig: postpro.v_abs(1, sig), "Amplitude of semidiurnal cross-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
+# postpro.plot_vertical_cross_section(lambda sig: postpro.v_abs(1, sig), "Amplitude of semidiurnal cross-channel velocity in central cross-section", 'Velocity [m/s]', p1, p2, 1000, 1000)
 
-postpro.plot_mesh2d('mesh')
+# postpro.plot_mesh2d('mesh')
 
 plt.show()
 

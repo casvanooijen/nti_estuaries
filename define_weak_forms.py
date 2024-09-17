@@ -622,78 +622,94 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
     # 1: Depth-integrated continuity equation ====================================================================================================================
     # See project notes for an analytical expression of these weak forms
 
-    surface_time_derivative = ngsolve.CoefficientFunction(0)
-    transport_divergence_frombedtoreference = ngsolve.CoefficientFunction(0) # empty coefficient functions to add stuff to
-    river_boundary_transport = ngsolve.CoefficientFunction(0)
+    # surface_time_derivative = ngsolve.CoefficientFunction(0)
+    # transport_divergence_frombedtoreference = ngsolve.CoefficientFunction(0) # empty coefficient functions to add stuff to
+    # river_boundary_transport = ngsolve.CoefficientFunction(0)
     # transport_divergence_fromzerotosurface = ngsolve.CoefficientFunction(0) # --> only necessary if surface_in_sigma
 
         # term l = 0
-    river_boundary_transport += 0.5 * DIC_testfunctions[0] * (H + R) * sum([G4(m) * normalalpha[m][0] for m in range(1, M)]) / x_scaling # in actuality we would have to compute the vector [u/L   v/B] * n, but this is impossible unless the normal has no lateral component, so this is what we assume
-    transport_divergence_frombedtoreference += -0.5 * (H + R) * sum([G4(m) * (ngsolve.grad(DIC_testfunctions[0])[0] * alpha_trialfunctions[m][0] / x_scaling +
-                                                                              ngsolve.grad(DIC_testfunctions[0])[1] * beta_trialfunctions[m][0] / y_scaling) for m in range(1, M)])
+    # if time_of_integration == 'end':
+    #     river_boundary_transport += 0.5 * DIC_testfunctions[0] * (H + R) * sum([G4(m) * normalalpha[m][0] for m in range(1, M)]) / x_scaling # in actuality we would have to compute the vector [u/L   v/B] * n, but this is impossible unless the normal has no lateral component, so this is what we assume
+    #     transport_divergence_frombedtoreference += -0.5 * (H + R) * sum([G4(m) * (ngsolve.grad(DIC_testfunctions[0])[0] * alpha_trialfunctions[m][0] / x_scaling +
+    #                                                                               ngsolve.grad(DIC_testfunctions[0])[1] * beta_trialfunctions[m][0] / y_scaling) for m in range(1, M)])
+    # else:
+    a += sum([0.5 * DIC_testfunctions[0] * (H + R) * G4(m) * normalalpha[m][0]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)])
+    a += sum([G4(m) * -0.5 * (H + R) * (ngsolve.grad(DIC_testfunctions[0])[0] * alpha_trialfunctions[m][0] / x_scaling +
+                                        ngsolve.grad(DIC_testfunctions[0])[1] * beta_trialfunctions[m][0] / y_scaling)  * ngsolve.dx for m in range(1, M)])
     
         # terms l != 0
     for l in range(1, imax + 1):
 
         # l < 0
-
-        surface_time_derivative += sigma * np.pi * l * DIC_testfunctions[-l] * gamma_trialfunctions[l]
-        river_boundary_transport += 0.5 * DIC_testfunctions[-l] * (H + R) * sum([G4(m) * normalalpha[m][-l] for m in range(1, M)]) / x_scaling
-        transport_divergence_frombedtoreference += -0.5 * (H + R) * sum([G4(m) * (ngsolve.grad(DIC_testfunctions[-l])[0] * alpha_trialfunctions[m][-l] / x_scaling +
-                                                                                  ngsolve.grad(DIC_testfunctions[-l])[1] * beta_trialfunctions[m][-l] / y_scaling) for m in range(1, M)])
+        # if time_of_integration == 'end':
+        #     surface_time_derivative += sigma * np.pi * l * DIC_testfunctions[-l] * gamma_trialfunctions[l]
+        #     river_boundary_transport += 0.5 * DIC_testfunctions[-l] * (H + R) * sum([G4(m) * normalalpha[m][-l] for m in range(1, M)]) / x_scaling
+        #     transport_divergence_frombedtoreference += -0.5 * (H + R) * sum([G4(m) * (ngsolve.grad(DIC_testfunctions[-l])[0] * alpha_trialfunctions[m][-l] / x_scaling +
+        #                                                                             ngsolve.grad(DIC_testfunctions[-l])[1] * beta_trialfunctions[m][-l] / y_scaling) for m in range(1, M)])
+        #     # l > 0
+        #     surface_time_derivative += sigma * np.pi * -l * DIC_testfunctions[l] * gamma_trialfunctions[-l]
+        #     river_boundary_transport += 0.5 * DIC_testfunctions[l] * (H + R) * sum([G4(m) * normalalpha[m][l] for m in range(1, M)]) / x_scaling
+        #     transport_divergence_frombedtoreference += -0.5 * (H + R) * sum([G4(m) * (ngsolve.grad(DIC_testfunctions[l])[0] * alpha_trialfunctions[m][l] / x_scaling +
+        #                                                                             ngsolve.grad(DIC_testfunctions[l])[1] * beta_trialfunctions[m][l] / y_scaling) for m in range(1, M)])
+        # else:
+        a += sigma * np.pi * l * DIC_testfunctions[-l] * gamma_trialfunctions[l] * ngsolve.dx
+        a += sum([0.5 * DIC_testfunctions[-l] * (H + R) * G4(m) * normalalpha[m][-l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)])
+        a += sum([ -0.5 * (H + R) * G4(m) * (ngsolve.grad(DIC_testfunctions[-l])[0] * alpha_trialfunctions[m][-l] / x_scaling +
+                                                                                ngsolve.grad(DIC_testfunctions[-l])[1] * beta_trialfunctions[m][-l] / y_scaling)  * ngsolve.dx for m in range(1, M)])
         # l > 0
-        surface_time_derivative += sigma * np.pi * -l * DIC_testfunctions[l] * gamma_trialfunctions[-l]
-        river_boundary_transport += 0.5 * DIC_testfunctions[l] * (H + R) * sum([G4(m) * normalalpha[m][l] for m in range(1, M)]) / x_scaling
-        transport_divergence_frombedtoreference += -0.5 * (H + R) * sum([G4(m) * (ngsolve.grad(DIC_testfunctions[l])[0] * alpha_trialfunctions[m][l] / x_scaling +
-                                                                                  ngsolve.grad(DIC_testfunctions[l])[1] * beta_trialfunctions[m][l] / y_scaling) for m in range(1, M)])
+        a += sigma * np.pi * -l * DIC_testfunctions[l] * gamma_trialfunctions[-l] * ngsolve.dx
+        a += sum([0.5 * DIC_testfunctions[l] * (H + R) * G4(m) * normalalpha[m][l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)])
+        a += sum([-0.5 * (H + R) * G4(m) * (ngsolve.grad(DIC_testfunctions[l])[0] * alpha_trialfunctions[m][l] / x_scaling +
+                                                                                ngsolve.grad(DIC_testfunctions[l])[1] * beta_trialfunctions[m][l] / y_scaling)  * ngsolve.dx for m in range(1, M)])
     
-
-    a += (surface_time_derivative + transport_divergence_frombedtoreference) * ngsolve.dx + river_boundary_transport * ngsolve.ds(BOUNDARY_DICT[RIVER])
+        
+    # if time_of_integration == 'end':
+    #     a += (surface_time_derivative + transport_divergence_frombedtoreference) * ngsolve.dx + river_boundary_transport * ngsolve.ds(BOUNDARY_DICT[RIVER])
 
     # 2: Momentum equations =========================================================================================================================
     # For analytical forms of these weak forms, see Project Notes
 
-    u_time_derivative = ngsolve.CoefficientFunction(0)
-    # u_time_derivative_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
-    # u_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
-    # u_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
-    # u_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
-    u_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
+    # u_time_derivative = ngsolve.CoefficientFunction(0)
+    # # u_time_derivative_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # u_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # u_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # u_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
+    # u_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
 
-    # u_vertical_momentumadvection_surfaceinsigma_boundary = ngsolve.CoefficientFunction(0)
-    u_Coriolis = ngsolve.CoefficientFunction(0)
-    # u_Coriolis_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # # u_vertical_momentumadvection_surfaceinsigma_boundary = ngsolve.CoefficientFunction(0)
+    # u_Coriolis = ngsolve.CoefficientFunction(0)
+    # # u_Coriolis_surfaceinsigma = ngsolve.CoefficientFunction(0)
 
-    u_barotropicpg = ngsolve.CoefficientFunction(0)
-    # u_barotropicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_veddyviscosity = ngsolve.CoefficientFunction(0)
-    u_baroclinicpg = ngsolve.CoefficientFunction(0)
-    # u_baroclinicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_barotropicpg = ngsolve.CoefficientFunction(0)
+    # # u_barotropicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_veddyviscosity = ngsolve.CoefficientFunction(0)
+    # u_baroclinicpg = ngsolve.CoefficientFunction(0)
+    # # u_baroclinicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
 
-    v_time_derivative = ngsolve.CoefficientFunction(0)
-    # v_time_derivative_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
-    # v_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
-    # v_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
-    # v_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
-    v_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
+    # v_time_derivative = ngsolve.CoefficientFunction(0)
+    # # v_time_derivative_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # v_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # v_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # v_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
+    # v_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
 
-    # v_vertical_momentumadvection_surfaceinsigma_boundary = ngsolve.CoefficientFunction(0)
-    v_Coriolis = ngsolve.CoefficientFunction(0)
-    # v_Coriolis_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # # v_vertical_momentumadvection_surfaceinsigma_boundary = ngsolve.CoefficientFunction(0)
+    # v_Coriolis = ngsolve.CoefficientFunction(0)
+    # # v_Coriolis_surfaceinsigma = ngsolve.CoefficientFunction(0)
 
-    v_barotropicpg = ngsolve.CoefficientFunction(0)
-    # v_barotropicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_veddyviscosity = ngsolve.CoefficientFunction(0)
-    v_baroclinicpg = ngsolve.CoefficientFunction(0)
-    # v_baroclinicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_barotropicpg = ngsolve.CoefficientFunction(0)
+    # # v_barotropicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_veddyviscosity = ngsolve.CoefficientFunction(0)
+    # v_baroclinicpg = ngsolve.CoefficientFunction(0)
+    # # v_baroclinicpg_surfaceinsigma = ngsolve.CoefficientFunction(0)
 
 
     for p in range(1, M): # loop through all vertical components
@@ -707,56 +723,78 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                     if H3_iszero(i,j,0): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                         continue
                     else:
-                        u_alongchannel_momentumadvection += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_lateral_momentumadvection += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_vertical_momentumadvection += -(H + R) * H3(i,j,0) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling  * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,0) * G2(m,n,p) * (
                             alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][0])[0] / x_scaling +
                             ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][0] / x_scaling +
                             alpha_trialfunctions[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][0])[1] / y_scaling +
                             ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        v_alongchannel_momentumadvection += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_lateral_momentumadvection += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_vertical_momentumadvection += -(H + R) * H3(i,j,0) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,0) * G2(m,n,p) * (
                             beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][0])[0] / x_scaling +
                             ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][0] / x_scaling +
                             beta_trialfunctions[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][0])[1] / y_scaling +
                             ngsolve.grad(beta_trialfunctions[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        u_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                        u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                        v_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                        v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G2(m,n,p) * alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
                     
 
-                    
-        u_Coriolis += -0.25 * f * (H + R) * umom_testfunctions[p][0] * beta_trialfunctions[p][0]
-        v_Coriolis += 0.25 * f * (H + R) * vmom_testfunctions[p][0] * alpha_trialfunctions[p][0]
+        # if time_of_integration == 'end':            
+        #     u_Coriolis += -0.25 * f * (H + R) * umom_testfunctions[p][0] * beta_trialfunctions[p][0]
+        #     v_Coriolis += 0.25 * f * (H + R) * vmom_testfunctions[p][0] * alpha_trialfunctions[p][0]
+        #     # factor 0.25 is from the assumed projection coefficients H1 and G0
+
+        #     u_barotropicpg += 0.5 * g * (H + R) * umom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[0] / x_scaling # assumes density is depth-independent
+        #     v_barotropicpg += 0.5 * g * (H + R) * vmom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[1] / y_scaling
+
+        #     u_baroclinicpg += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][0] * rhox / rho # assumes density is depth-independent
+        #     v_baroclinicpg += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][0] * rhoy / rho
+
+        #     if model_options['veddy_viscosity_assumption'] == 'constant':
+        #         u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] / (H + R) # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+        #         v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0] / (H + R)
+        #     elif model_options['veddy_viscosity_assumption'] == 'depth-scaled&constantprofile': 
+        #         u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+        #         v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0]
+       
+        a += -0.25 * f * (H + R) * umom_testfunctions[p][0] * beta_trialfunctions[p][0] * ngsolve.dx
+        a += 0.25 * f * (H + R) * vmom_testfunctions[p][0] * alpha_trialfunctions[p][0] * ngsolve.dx
         # factor 0.25 is from the assumed projection coefficients H1 and G0
 
-        u_barotropicpg += 0.5 * g * (H + R) * umom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[0] / x_scaling # assumes density is depth-independent
-        v_barotropicpg += 0.5 * g * (H + R) * vmom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[1] / y_scaling
+        a += 0.5 * g * (H + R) * umom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[0] / x_scaling * ngsolve.dx # assumes density is depth-independent
+        a += 0.5 * g * (H + R) * vmom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[1] / y_scaling * ngsolve.dx
 
-        u_baroclinicpg += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][0] * rhox / rho # assumes density is depth-independent
-        v_baroclinicpg += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][0] * rhoy / rho
+        a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][0] * rhox / rho * ngsolve.dx# assumes density is depth-independent
+        a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][0] * rhoy / rho * ngsolve.dx
 
         if model_options['veddy_viscosity_assumption'] == 'constant':
-            u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] / (H + R) # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
-            v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0] / (H + R)
+            a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] / (H + R) * ngsolve.dx# assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+            a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0] / (H + R) * ngsolve.dx
         elif model_options['veddy_viscosity_assumption'] == 'depth-scaled&constantprofile': 
-            u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
-            v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0]
-
+            a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] *ngsolve.dx# assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+            a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0] * ngsolve.dx
         
         # terms l != 0
         for l in range(1, imax + 1):
-            
-            u_time_derivative += 0.5 * np.pi * l * (H + R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] # factor 0.5 from vertical projection coefficient
-            u_time_derivative += -0.5 * np.pi * l * (H +R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l]
-            v_time_derivative += 0.5 * np.pi * l * (H + R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] # factor 0.5 from vertical projection coefficient
-            v_time_derivative += -0.5 * np.pi * l * (H +R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l]
+
+            # if time_of_integration == 'end':
+            #     u_time_derivative += 0.5 * np.pi * l * (H + R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] # factor 0.5 from vertical projection coefficient
+            #     u_time_derivative += -0.5 * np.pi * l * (H +R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l]
+            #     v_time_derivative += 0.5 * np.pi * l * (H + R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] # factor 0.5 from vertical projection coefficient
+            #     v_time_derivative += -0.5 * np.pi * l * (H +R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l]
+            # else:
+            a += 0.5 * np.pi * l * (H + R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] * ngsolve.dx# factor 0.5 from vertical projection coefficient
+            a += -0.5 * np.pi * l * (H +R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l] * ngsolve.dx
+            a += 0.5 * np.pi * l * (H + R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] * ngsolve.dx # factor 0.5 from vertical projection coefficient
+            a += -0.5 * np.pi * l * (H +R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l] * ngsolve.dx
 
             if not only_linear:
                 for i in range(-imax, imax + 1):
@@ -765,95 +803,130 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                         if H3_iszero(i,j,-l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                             continue
                         else:
-                            u_alongchannel_momentumadvection += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                            u_lateral_momentumadvection += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                            u_vertical_momentumadvection += -(H + R) * H3(i,j,-l) * sum([sum([G2(m,n,p) * (
+                            a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([-(H + R) * H3(i,j,-l) * G2(m,n,p) * (
                                 alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][-l])[0] / x_scaling +
                                 ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][0] / x_scaling +
                                 alpha_trialfunctions[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][-l])[1] / y_scaling +
                                 ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][0] / y_scaling
-                            ) for m in range(1, M)]) for n in range(1, M)])
+                            ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                            v_alongchannel_momentumadvection += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                            v_lateral_momentumadvection += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                            v_vertical_momentumadvection += -(H + R) * H3(i,j,-l) * sum([sum([G2(m,n,p) * (
+                            a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([-(H + R) * H3(i,j,-l) * G2(m,n,p) * (
                                 beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][-l])[0] / x_scaling +
                                 ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][0] / x_scaling +
                                 beta_trialfunctions[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][-l])[1] / y_scaling +
                                 ngsolve.grad(beta_trialfunctions[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][0] / y_scaling
-                            ) for m in range(1, M)]) for n in range(1, M)])
+                            ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                            u_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                            u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                            v_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                            v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
+                            a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                            a += sum([sum([-(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                            a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                            a += sum([sum([-(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
 
                         if H3_iszero(i,j,l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                             continue
                         else:
-                            u_alongchannel_momentumadvection += (H + R) * H3(i,j,l) * umom_testfunctions[p][l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                            u_lateral_momentumadvection += (H + R) * H3(i,j,l) * umom_testfunctions[p][l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                            u_vertical_momentumadvection += -(H + R) * H3(i,j,l) * sum([sum([G2(m,n,p) * (
+                            a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([-(H + R) * H3(i,j,l) * G2(m,n,p) * (
                                 alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][l])[0] / x_scaling +
                                 ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][0] / x_scaling +
                                 alpha_trialfunctions[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][l])[1] / y_scaling +
                                 ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][0] / y_scaling
-                            ) for m in range(1, M)]) for n in range(1, M)])
+                            ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                            v_alongchannel_momentumadvection += (H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                            v_lateral_momentumadvection += (H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                            v_vertical_momentumadvection += -(H + R) * H3(i,j,l) * sum([sum([G2(m,n,p) * (
+                            a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                            a += sum([sum([-(H + R) * H3(i,j,l) * G2(m,n,p) * (
                                 beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][l])[0] / x_scaling +
                                 ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][0] / x_scaling +
                                 beta_trialfunctions[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][l])[1] / y_scaling +
                                 ngsolve.grad(beta_trialfunctions[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][0] / y_scaling
-                            ) for m in range(1, M)]) for n in range(1, M)])
+                            ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                            u_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                            u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                            v_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                            v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
+                            a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                            a += sum([sum([-(H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                            a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                            a += sum([sum([-(H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+            
+            # if time_of_integration == 'end':
+            #     u_Coriolis += -0.25 * f * (H + R) * umom_testfunctions[p][-l] * beta_trialfunctions[p][-l]
+            #     v_Coriolis += 0.25 * f * (H + R) * vmom_testfunctions[p][-l] * alpha_trialfunctions[p][-l]
+            #     # factor 0.25 is from the assumed projection coefficients H1 and G0
 
-            u_Coriolis += -0.25 * f * (H + R) * umom_testfunctions[p][-l] * beta_trialfunctions[p][-l]
-            v_Coriolis += 0.25 * f * (H + R) * vmom_testfunctions[p][-l] * alpha_trialfunctions[p][-l]
+            #     u_barotropicpg += 0.5 * g * (H + R) * umom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[0] / x_scaling # assumes density is depth-independent
+            #     v_barotropicpg += 0.5 * g * (H + R) * vmom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[1] / y_scaling
+
+            #     u_baroclinicpg += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][-l] * rhox / rho # assumes density is depth-independent
+            #     v_baroclinicpg += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][-l] * rhoy / rho
+
+            #     if model_options['veddy_viscosity_assumption'] == 'constant':
+            #         u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] / (H + R) # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+            #         v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l] / (H + R)
+            #     elif model_options['veddy_viscosity_assumption'] == 'depth-scaled&constantprofile': 
+            #         u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+            #         v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l]
+
+            #     u_Coriolis += -0.25 * f * (H + R) * umom_testfunctions[p][l] * beta_trialfunctions[p][l]
+            #     v_Coriolis += 0.25 * f * (H + R) * vmom_testfunctions[p][l] * alpha_trialfunctions[p][l]
+            #     # factor 0.25 is from the assumed projection coefficients H1 and G0
+
+            #     u_barotropicpg += 0.5 * g * (H + R) * umom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[0] / x_scaling # assumes density is depth-independent
+            #     v_barotropicpg += 0.5 * g * (H + R) * vmom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[1] / y_scaling
+
+            #     u_baroclinicpg += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][l] * rhox / rho # assumes density is depth-independent
+            #     v_baroclinicpg += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][l] * rhoy / rho
+
+            #     if model_options['veddy_viscosity_assumption'] == 'constant':
+            #         u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] / (H + R) # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+            #         v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l] / (H + R)
+            #     elif model_options['veddy_viscosity_assumption'] == 'depth-scaled&constantprofile': 
+            #         u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+            #         v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l]
+            # else:
+            a += -0.25 * f * (H + R) * umom_testfunctions[p][-l] * beta_trialfunctions[p][-l] * ngsolve.dx
+            a += 0.25 * f * (H + R) * vmom_testfunctions[p][-l] * alpha_trialfunctions[p][-l] * ngsolve.dx
             # factor 0.25 is from the assumed projection coefficients H1 and G0
 
-            u_barotropicpg += 0.5 * g * (H + R) * umom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[0] / x_scaling # assumes density is depth-independent
-            v_barotropicpg += 0.5 * g * (H + R) * vmom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[1] / y_scaling
+            a += 0.5 * g * (H + R) * umom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[0] / x_scaling * ngsolve.dx # assumes density is depth-independent
+            a += 0.5 * g * (H + R) * vmom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[1] / y_scaling * ngsolve.dx
 
-            u_baroclinicpg += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][-l] * rhox / rho # assumes density is depth-independent
-            v_baroclinicpg += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][-l] * rhoy / rho
+            a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][-l] * rhox / rho * ngsolve.dx # assumes density is depth-independent
+            a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][-l] * rhoy / rho * ngsolve.dx
 
             if model_options['veddy_viscosity_assumption'] == 'constant':
-                u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] / (H + R) # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
-                v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l] / (H + R)
+                a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] / (H + R) * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+                a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l] / (H + R) * ngsolve.dx
             elif model_options['veddy_viscosity_assumption'] == 'depth-scaled&constantprofile': 
-                u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
-                v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l]
+                a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+                a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l] * ngsolve.dx
 
-            u_Coriolis += -0.25 * f * (H + R) * umom_testfunctions[p][l] * beta_trialfunctions[p][l]
-            v_Coriolis += 0.25 * f * (H + R) * vmom_testfunctions[p][l] * alpha_trialfunctions[p][l]
+            a += -0.25 * f * (H + R) * umom_testfunctions[p][l] * beta_trialfunctions[p][l] * ngsolve.dx
+            a += 0.25 * f * (H + R) * vmom_testfunctions[p][l] * alpha_trialfunctions[p][l] * ngsolve.dx
             # factor 0.25 is from the assumed projection coefficients H1 and G0
 
-            u_barotropicpg += 0.5 * g * (H + R) * umom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[0] / x_scaling # assumes density is depth-independent
-            v_barotropicpg += 0.5 * g * (H + R) * vmom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[1] / y_scaling
+            a += 0.5 * g * (H + R) * umom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[0] / x_scaling * ngsolve.dx # assumes density is depth-independent
+            a += 0.5 * g * (H + R) * vmom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[1] / y_scaling * ngsolve.dx
 
-            u_baroclinicpg += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][l] * rhox / rho # assumes density is depth-independent
-            v_baroclinicpg += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][l] * rhoy / rho
+            a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * umom_testfunctions[p][l] * rhox / rho * ngsolve.dx # assumes density is depth-independent
+            a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H + R) * (H + R) * vmom_testfunctions[p][l] * rhoy / rho * ngsolve.dx
 
             if model_options['veddy_viscosity_assumption'] == 'constant':
-                u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] / (H + R) # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
-                v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l] / (H + R)
+                a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] / (H + R) * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+                a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l] / (H + R) * ngsolve.dx
             elif model_options['veddy_viscosity_assumption'] == 'depth-scaled&constantprofile': 
-                u_veddyviscosity += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
-                v_veddyviscosity += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l]
+                a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
+                a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l] * ngsolve.dx
 
-
-    a += (u_time_derivative + v_time_derivative + model_options['advection_epsilon'] * (u_alongchannel_momentumadvection + u_lateral_momentumadvection + u_vertical_momentumadvection + 
-                                                                                        v_alongchannel_momentumadvection + v_lateral_momentumadvection + v_vertical_momentumadvection) +
-          u_Coriolis + v_Coriolis + u_barotropicpg + v_barotropicpg + u_baroclinicpg + v_baroclinicpg + u_veddyviscosity + v_veddyviscosity) * ngsolve.dx + \
-          model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_river + v_vertical_momentumadvection_boundary_river) * ngsolve.ds(BOUNDARY_DICT[RIVER]) + \
-          model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_sea + v_vertical_momentumadvection_boundary_sea) * ngsolve.ds(BOUNDARY_DICT[SEA])
+    # if time_of_integration == 'end':
+    #     a += (u_time_derivative + v_time_derivative + model_options['advection_epsilon'] * (u_alongchannel_momentumadvection + u_lateral_momentumadvection + u_vertical_momentumadvection + 
+    #                                                                                         v_alongchannel_momentumadvection + v_lateral_momentumadvection + v_vertical_momentumadvection) +
+    #         u_Coriolis + v_Coriolis + u_barotropicpg + v_barotropicpg + u_baroclinicpg + v_baroclinicpg + u_veddyviscosity + v_veddyviscosity) * ngsolve.dx + \
+    #         model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_river + v_vertical_momentumadvection_boundary_river) * ngsolve.ds(BOUNDARY_DICT[RIVER]) + \
+    #         model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_sea + v_vertical_momentumadvection_boundary_sea) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
 
 def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunctions, alpha0, beta_trialfunctions, beta0, gamma_trialfunctions,
@@ -928,23 +1001,23 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
     H3 = time_basis.tensor_dict['H3']
     H3_iszero = time_basis.tensor_dict['H3_iszero']
 
-    u_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
-    # u_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
-    # u_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
-    # u_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    u_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
-    u_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
+    # u_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # u_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # u_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # u_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # u_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
+    # u_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
 
-    v_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
-    # v_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
-    # v_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
-    # v_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
-    v_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
-    v_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
+    # v_alongchannel_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # v_alongchannel_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_lateral_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # v_lateral_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_vertical_momentumadvection = ngsolve.CoefficientFunction(0)
+    # # v_vertical_momentumadvection_surfaceinsigma = ngsolve.CoefficientFunction(0)
+    # v_vertical_momentumadvection_boundary_river = ngsolve.CoefficientFunction(0)
+    # v_vertical_momentumadvection_boundary_sea = ngsolve.CoefficientFunction(0)
 
     for p in range(1, M): # loop through all vertical components
 
@@ -955,49 +1028,49 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
                 if H3_iszero(i,j,0): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                     continue
                 else:
-                    u_alongchannel_momentumadvection += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                    u_lateral_momentumadvection += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                    u_vertical_momentumadvection += -(H + R) * H3(i,j,0) * sum([sum([G2(m,n,p) * (
+                    a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([-(H + R) * H3(i,j,0) * G2(m,n,p) * (
                         alpha0[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][0])[0] / x_scaling +
                         ngsolve.grad(alpha0[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][0] / x_scaling +
                         alpha0[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][0])[1] / y_scaling +
                         ngsolve.grad(alpha0[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][0] / y_scaling
-                    ) for m in range(1, M)]) for n in range(1, M)])
+                    ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                    u_alongchannel_momentumadvection += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                    u_lateral_momentumadvection += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                    u_vertical_momentumadvection += -(H + R) * H3(i,j,0) * sum([sum([G2(m,n,p) * (
+                    a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([-(H + R) * H3(i,j,0) * G2(m,n,p) * (
                         alpha_trialfunctions[m][i] * alpha0[n][j] * ngsolve.grad(umom_testfunctions[p][0])[0] / x_scaling +
                         ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha0[n][j] * umom_testfunctions[p][0] / x_scaling +
                         alpha_trialfunctions[m][i] * beta0[n][j] * ngsolve.grad(umom_testfunctions[p][0])[1] / y_scaling +
                         ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta0[n][j] * umom_testfunctions[p][0] / y_scaling
-                    ) for m in range(1, M)]) for n in range(1, M)])
+                    ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                    v_alongchannel_momentumadvection += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G1(m,n,p) * alpha0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                    v_lateral_momentumadvection += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G1(m,n,p) * beta0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                    v_vertical_momentumadvection += -(H + R) * H3(i,j,0) * sum([sum([G2(m,n,p) * (
+                    a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([-(H + R) * H3(i,j,0) * G2(m,n,p) * (
                         beta0[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][0])[0] / x_scaling +
                         ngsolve.grad(beta0[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][0] / x_scaling +
                         beta0[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][0])[1] / y_scaling +
                         ngsolve.grad(beta0[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][0] / y_scaling
-                    ) for m in range(1, M)]) for n in range(1, M)])
+                    ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                    v_alongchannel_momentumadvection += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                    v_lateral_momentumadvection += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                    v_vertical_momentumadvection += -(H + R) * H3(i,j,0) * sum([sum([G2(m,n,p) * (
+                    a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                    a += sum([sum([-(H + R) * H3(i,j,0) * G2(m,n,p) * (
                         beta_trialfunctions[m][i] * alpha0[n][j] * ngsolve.grad(vmom_testfunctions[p][0])[0] / x_scaling +
                         ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha0[n][j] * vmom_testfunctions[p][0] / x_scaling +
                         beta_trialfunctions[m][i] * beta0[n][j] * ngsolve.grad(vmom_testfunctions[p][0])[1] / y_scaling +
                         ngsolve.grad(beta_trialfunctions[m][i])[1] * beta0[n][j] * vmom_testfunctions[p][0] / y_scaling
-                    ) for m in range(1, M)]) for n in range(1, M)])
+                    ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                    u_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                    u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G2(m,n,p) * alpha0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                    v_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                    v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G2(m,n,p) * beta0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
+                    a += sum([sum([(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                    a += sum([sum([-(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G2(m,n,p) * alpha0[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                    a += sum([sum([(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                    a += sum([sum([-(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
                     
-                    u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * alpha0[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                    v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * alpha0[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
+                    a += sum([sum([-(H + R) * H3(i,j,0) * umom_testfunctions[p][0] * G2(m,n,p) * alpha_trialfunctions[m][i] * alpha0[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                    a += sum([sum([-(H + R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha0[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
 
          # terms l!=0
         for l in range(1, imax + 1):
@@ -1008,99 +1081,100 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
                     if H3_iszero(i,j,-l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                         continue
                     else:
-                        u_alongchannel_momentumadvection += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_lateral_momentumadvection += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_vertical_momentumadvection += -(H + R) * H3(i,j,-l) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * G2(m,n,p) * (
                             alpha0[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][-l])[0] / x_scaling +
-                            ngsolve.grad(alpha0[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(alpha0[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][-l] / x_scaling +
                             alpha0[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][-l])[1] / y_scaling +
-                            ngsolve.grad(alpha0[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
-                        u_alongchannel_momentumadvection += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_lateral_momentumadvection += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_vertical_momentumadvection += -(H + R) * H3(i,j,-l) * sum([sum([G2(m,n,p) * (
+                            ngsolve.grad(alpha0[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][-l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
+
+                        a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * G2(m,n,p) * (
                             alpha_trialfunctions[m][i] * alpha0[n][j] * ngsolve.grad(umom_testfunctions[p][-l])[0] / x_scaling +
-                            ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha0[n][j] * umom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha0[n][j] * umom_testfunctions[p][-l] / x_scaling +
                             alpha_trialfunctions[m][i] * beta0[n][j] * ngsolve.grad(umom_testfunctions[p][-l])[1] / y_scaling +
-                            ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta0[n][j] * umom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                            ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta0[n][j] * umom_testfunctions[p][-l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        v_alongchannel_momentumadvection += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * alpha0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_lateral_momentumadvection += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * beta0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_vertical_momentumadvection += -(H + R) * H3(i,j,-l) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * G2(m,n,p) * (
                             beta0[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][-l])[0] / x_scaling +
-                            ngsolve.grad(beta0[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(beta0[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][-l] / x_scaling +
                             beta0[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][-l])[1] / y_scaling +
-                            ngsolve.grad(beta0[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
-                        v_alongchannel_momentumadvection += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta0[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_lateral_momentumadvection += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta0[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_vertical_momentumadvection += -(H + R) * H3(i,j,-l) * sum([sum([G2(m,n,p) * (
+                            ngsolve.grad(beta0[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][-l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
+
+                        a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * G2(m,n,p) * (
                             beta_trialfunctions[m][i] * alpha0[n][j] * ngsolve.grad(vmom_testfunctions[p][-l])[0] / x_scaling +
-                            ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha0[n][j] * vmom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha0[n][j] * vmom_testfunctions[p][-l] / x_scaling +
                             beta_trialfunctions[m][i] * beta0[n][j] * ngsolve.grad(vmom_testfunctions[p][-l])[1] / y_scaling +
-                            ngsolve.grad(beta_trialfunctions[m][i])[1] * beta0[n][j] * vmom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                            ngsolve.grad(beta_trialfunctions[m][i])[1] * beta0[n][j] * vmom_testfunctions[p][-l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        u_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                        u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                        v_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                        v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-
-                        u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * alpha0[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                        v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * alpha0[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha0[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G2(m,n,p) * alpha_trialfunctions[m][i] * alpha0[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,-l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha0[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
 
                     if H3_iszero(i,j,l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                         continue
                     else:
-                        u_alongchannel_momentumadvection += (H + R) * H3(i,j,l) * umom_testfunctions[p][l] * sum([sum([G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_lateral_momentumadvection += (H + R) * H3(i,j,l) * umom_testfunctions[p][l] * sum([sum([G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_vertical_momentumadvection += -(H + R) * H3(i,j,l) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,l) * G2(m,n,p) * (
                             alpha0[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][l])[0] / x_scaling +
-                            ngsolve.grad(alpha0[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(alpha0[m][i])[0] * alpha_trialfunctions[n][j] * umom_testfunctions[p][l] / x_scaling +
                             alpha0[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(umom_testfunctions[p][l])[1] / y_scaling +
-                            ngsolve.grad(alpha0[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                            ngsolve.grad(alpha0[m][i])[1] * beta_trialfunctions[n][j] * umom_testfunctions[p][l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        u_alongchannel_momentumadvection += (H + R) * H3(i,j,l) * umom_testfunctions[p][l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_lateral_momentumadvection += (H + R) * H3(i,j,l) * umom_testfunctions[p][l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        u_vertical_momentumadvection += -(H + R) * H3(i,j,l) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha0[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,l) * G2(m,n,p) * (
                             alpha_trialfunctions[m][i] * alpha0[n][j] * ngsolve.grad(umom_testfunctions[p][l])[0] / x_scaling +
-                            ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha0[n][j] * umom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(alpha_trialfunctions[m][i])[0] * alpha0[n][j] * umom_testfunctions[p][l] / x_scaling +
                             alpha_trialfunctions[m][i] * beta0[n][j] * ngsolve.grad(umom_testfunctions[p][l])[1] / y_scaling +
-                            ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta0[n][j] * umom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                            ngsolve.grad(alpha_trialfunctions[m][i])[1] * beta0[n][j] * umom_testfunctions[p][l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        v_alongchannel_momentumadvection += (H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * sum([sum([G1(m,n,p) * alpha0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_lateral_momentumadvection += (H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * sum([sum([G1(m,n,p) * beta0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_vertical_momentumadvection += -(H + R) * H3(i,j,l) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,l) * G2(m,n,p) * (
                             beta0[m][i] * alpha_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][l])[0] / x_scaling +
-                            ngsolve.grad(beta0[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(beta0[m][i])[0] * alpha_trialfunctions[n][j] * vmom_testfunctions[p][l] / x_scaling +
                             beta0[m][i] * beta_trialfunctions[n][j] * ngsolve.grad(vmom_testfunctions[p][l])[1] / y_scaling +
-                            ngsolve.grad(beta0[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                            ngsolve.grad(beta0[m][i])[1] * beta_trialfunctions[n][j] * vmom_testfunctions[p][l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        v_alongchannel_momentumadvection += (H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * sum([sum([G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta0[n][j])[0] / x_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_lateral_momentumadvection += (H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * sum([sum([G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta0[n][j])[1] / y_scaling for n in range(1, M)]) for m in range(1, M)])
-                        v_vertical_momentumadvection += -(H + R) * H3(i,j,l) * sum([sum([G2(m,n,p) * (
+                        a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(beta_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(1, M)]) for m in range(1, M)])
+                        a += sum([sum([-(H + R) * H3(i,j,l) * G2(m,n,p) * (
                             beta_trialfunctions[m][i] * alpha0[n][j] * ngsolve.grad(vmom_testfunctions[p][l])[0] / x_scaling +
-                            ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha0[n][j] * vmom_testfunctions[p][0] / x_scaling +
+                            ngsolve.grad(beta_trialfunctions[m][i])[0] * alpha0[n][j] * vmom_testfunctions[p][l] / x_scaling +
                             beta_trialfunctions[m][i] * beta0[n][j] * ngsolve.grad(vmom_testfunctions[p][l])[1] / y_scaling +
-                            ngsolve.grad(beta_trialfunctions[m][i])[1] * beta0[n][j] * vmom_testfunctions[p][0] / y_scaling
-                        ) for m in range(1, M)]) for n in range(1, M)])
+                            ngsolve.grad(beta_trialfunctions[m][i])[1] * beta0[n][j] * vmom_testfunctions[p][l] / y_scaling
+                        ) * ngsolve.dx for m in range(1, M)]) for n in range(1, M)])
 
-                        u_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                        u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                        v_vertical_momentumadvection_boundary_river += (H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at river boundary to be [1 0]
-                        v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-
-                        u_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,l) * umom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * alpha_trialfunctions[m][i] * alpha0[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-                        v_vertical_momentumadvection_boundary_sea += -(H + R) * H3(i,j,l) * vmom_testfunctions[p][-l] * sum([sum([G2(m,n,p) * beta_trialfunctions[m][i] * alpha0[n][j] for m in range(1, M)]) for n in range(1, M)]) / x_scaling # assumes outward normal at sea boundary to be [-1 0]
-
-        a += model_options['advection_epsilon'] * (u_alongchannel_momentumadvection + u_lateral_momentumadvection + u_vertical_momentumadvection + 
-                                                   v_alongchannel_momentumadvection + v_lateral_momentumadvection + v_vertical_momentumadvection) * ngsolve.dx + \
-             model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_river + v_vertical_momentumadvection_boundary_river) * ngsolve.ds(BOUNDARY_DICT[RIVER]) + \
-             model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_sea + v_vertical_momentumadvection_boundary_sea) * ngsolve.ds(BOUNDARY_DICT[SEA])
+                        a += sum([sum([(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G2(m,n,p) * alpha_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G2(m,n,p) * alpha0[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at river boundary to be [1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G2(m,n,p) * beta0[m][i] * alpha_trialfunctions[n][j] for m in range(1, M)]) / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        
+                        a += sum([sum([-(H + R) * H3(i,j,l) * umom_testfunctions[p][l] * G2(m,n,p) * alpha_trialfunctions[m][i] * alpha0[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+                        a += sum([sum([-(H + R) * H3(i,j,l) * vmom_testfunctions[p][l] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha0[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(1, M)]) for n in range(1, M)]) # assumes outward normal at sea boundary to be [-1 0]
+        # a += model_options['advection_epsilon'] * (u_alongchannel_momentumadvection + u_lateral_momentumadvection + u_vertical_momentumadvection + 
+        #                                            v_alongchannel_momentumadvection + v_lateral_momentumadvection + v_vertical_momentumadvection) * ngsolve.dx + \
+        #      model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_river + v_vertical_momentumadvection_boundary_river) * ngsolve.ds(BOUNDARY_DICT[RIVER]) + \
+        #      model_options['advection_epsilon'] * (u_vertical_momentumadvection_boundary_sea + v_vertical_momentumadvection_boundary_sea) * ngsolve.ds(BOUNDARY_DICT[SEA])
 
 
 

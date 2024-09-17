@@ -829,6 +829,10 @@ def load_hydrodynamics(foldername):
 
         hydro.spatial_physical_parameters[param_name] = gf
 
+    # add constant parameters
+
+    hydro.constant_physical_parameters = params
+
     # add solution
     hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
     mesh_functions.load_basevector(hydro.solution_gf.vec, f'{foldername}/solution.npy')

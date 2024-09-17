@@ -145,8 +145,8 @@ plt.rcParams["mathtext.fontset"] = 'dejavuserif'
 plt.rcParams["font.family"] = 'serif'
 
 # endpoints of cross-section plots
-p1 = np.array([L/2,B/2])
-p2 = np.array([L/2,-B/2])
+p1 = np.array([0.5,0.5])
+p2 = np.array([0.5,-0.5])
 
 
 # create plots

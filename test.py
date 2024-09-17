@@ -132,7 +132,7 @@ hydro.set_riverine_boundary_condition(discharge_amplitude_list, discharge_phase_
 
 advection_epsilon_list = [0] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
 
-hydro.solve(advection_epsilon_list, skip_nonlinear=True, maxits=10, tol=1e-7, method='pardiso', time_of_integration='between')
+hydro.solve(advection_epsilon_list, skip_nonlinear=True, maxits=10, tol=1e-7, method='pardiso')
 # hydro.save('test_solution')
 
 

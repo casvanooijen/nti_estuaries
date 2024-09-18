@@ -432,6 +432,7 @@ class Hydrodynamics(object):
 
         f_options = open(f"{foldername}/options.json", 'x')
         json.dump(options, f_options, indent=4)
+        f_options.close()
 
         # options_string = f"bed_bc:{self.model_options['bed_bc']}\nleading_order_surface:{self.model_options['leading_order_surface']}\n"+\
         #                  f"veddy_viscosity_assumption:{self.model_options['veddy_viscosity_assumption']}\ndensity:{self.model_options['density']}\n"+\
@@ -448,6 +449,7 @@ class Hydrodynamics(object):
 
         f_params = open(f"{foldername}/params.json", 'x')
         json.dump(params, f_params, indent=4)
+        f_params.close()
 
         # params_string = f"sem_order:{self.order}\nM:{self.M}\nimax:{self.imax}"
         # for name, value in self.constant_physical_parameters.items():

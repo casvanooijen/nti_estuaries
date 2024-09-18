@@ -154,7 +154,7 @@ class Hydrodynamics(object):
     """
 
     def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int, 
-                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
+                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis, scaling:bool = True):
         
         self.mesh = mesh
         self.model_options = model_options
@@ -185,6 +185,8 @@ class Hydrodynamics(object):
 
         self._setup_TnT()
         self._get_normalvec()
+
+        self.scaling = scaling
         
         # Get norms of the basis functions
 
@@ -287,20 +289,23 @@ class Hydrodynamics(object):
 
         a_total = ngsolve.BilinearForm(self.femspace)
 
-        # weakforms.add_bilinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-        #                             self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
-        #                             self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
-        #                             self.riverine_forcing.normal_alpha, forcing=True)
-        # if not skip_nonlinear:
-        #     weakforms.add_nonlinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-        #                                  self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
-        #                                  self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
-        #                                  self.riverine_forcing.normal_alpha, self.n)
-
-        weakforms.add_weak_form(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+        if self.scaling:
+            weakforms.add_weak_form(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                 self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
                                 self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
                                 self.riverine_forcing.normal_alpha, only_linear=(not skip_nonlinear))
+        else:
+            weakforms.add_bilinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+                                        self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
+                                        self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
+                                        self.riverine_forcing.normal_alpha, forcing=True)
+            if not skip_nonlinear:
+                weakforms.add_nonlinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+                                            self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
+                                            self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
+                                            self.riverine_forcing.normal_alpha, self.n)
+
+        
         
         self.total_bilinearform = a_total
 
@@ -603,20 +608,32 @@ class Hydrodynamics(object):
         #                             self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
         #                             self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
         #                             self.riverine_forcing.normal_alpha, forcing=True)
-        weakforms.add_weak_form(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-                                self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
-                                self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
-                                self.riverine_forcing.normal_alpha, only_linear=True)
-        if advection_weighting_parameter != 0:
-            # weakforms.add_linearised_nonlinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-            #                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.alpha_solution, self.beta_solution, self.gamma_solution,
-            #                                         self.M, self.imax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
-            #                                         advection_weighting_parameter, self.n)
-            weakforms.add_linearised_nonlinear_terms(a, self.model_options, self.alpha_trialfunctions, self.alpha_solution, self.beta_trialfunctions, self.beta_solution,
-                                                     self.gamma_trialfunctions, self.gamma_solution, 
-                                                     self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
-                                                     self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
-                                                     self.riverine_forcing.normal_alpha)
+        if self.scaling:
+            weakforms.add_weak_form(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+                                    self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
+                                    self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
+                                    self.riverine_forcing.normal_alpha, only_linear=True)
+            if advection_weighting_parameter != 0:
+                # weakforms.add_linearised_nonlinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+                #                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.alpha_solution, self.beta_solution, self.gamma_solution,
+                #                                         self.M, self.imax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
+                #                                         advection_weighting_parameter, self.n)
+                weakforms.add_linearised_nonlinear_terms(a, self.model_options, self.alpha_trialfunctions, self.alpha_solution, self.beta_trialfunctions, self.beta_solution,
+                                                        self.gamma_trialfunctions, self.gamma_solution, 
+                                                        self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
+                                                        self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
+                                                        self.riverine_forcing.normal_alpha)
+        else:
+            weakforms.add_bilinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+                                    self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
+                                    self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
+                                    self.riverine_forcing.normal_alpha, forcing=True)
+            if advection_weighting_parameter != 0:
+                weakforms.add_linearised_nonlinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
+                                                        self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.alpha_solution, self.beta_solution, self.gamma_solution,
+                                                        self.M, self.imax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
+                                                        advection_weighting_parameter, self.n)
+                
             # add_linearised_nonlinear_part_to_bilinearform(self, a, self.alpha_solution, self.beta_solution, self.gamma_solution, advection_weighting_parameter)
         forms_time = timeit.default_timer() - forms_start
         if method == 'gmres':
@@ -795,6 +812,8 @@ def load_hydrodynamics(foldername):
         raise ValueError(f"Could not load hydrodynamics object: vertical basis name {model_options['vertical_basis_name']} invalid.")
     
     model_options['advection_influence_matrix'] = np.array(model_options['advection_influence_matrix'])
+
+    f_options.close()
     
     # params
 
@@ -804,6 +823,7 @@ def load_hydrodynamics(foldername):
     sem_order = params.pop('sem_order')
     M = params.pop('M')
     imax = params.pop('imax')
+    f_params.close()
     # the remainder of this dict constitutes the constant physical parameters of the simulation
 
     time_basis = TruncationBasis.harmonic_time_basis(params['sigma']) # only this particular Fourier basis is supported
@@ -825,7 +845,7 @@ def load_hydrodynamics(foldername):
 
         oneDfemspace = ngsolve.H1(mesh, order = sem_order)
         gf = ngsolve.GridFunction(oneDfemspace)
-        mesh_functions.load_basevector(gf.vec, f'{foldername}/spatial_parameters/{filename}')
+        mesh_functions.load_basevector(gf.vec.data, f'{foldername}/spatial_parameters/{filename}')
 
         hydro.spatial_physical_parameters[param_name] = gf
 
@@ -835,7 +855,7 @@ def load_hydrodynamics(foldername):
 
     # add solution
     hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
-    mesh_functions.load_basevector(hydro.solution_gf.vec, f'{foldername}/solution.npy')
+    mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{foldername}/solution.npy')
 
     hydro._restructure_solution()
 

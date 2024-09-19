@@ -122,14 +122,10 @@ class PostProcessing(object):
         self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
         self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
 
-        if hydro.loaded_from_files: # in this case, spatial parameters are stored as GridFunctions instead of SpatialParameter objects
-            H = hydro.spatial_physical_parameters['H']
-            Hx = ngsolve.grad(H)[0]
-            Hy = ngsolve.grad(H)[1]
-        else:
-            H = hydro.spatial_physical_parameters['H'].cf
-            Hx = hydro.spatial_physical_parameters['H'].gradient_cf[0]
-            Hy = hydro.spatial_physical_parameters['H'].gradient_cf[1]
+        
+        H = hydro.spatial_physical_parameters['H'].cf
+        Hx = hydro.spatial_physical_parameters['H'].gradient_cf[0]
+        Hy = hydro.spatial_physical_parameters['H'].gradient_cf[1]
 
         F = dict()
         F[0] = [H * (ngsolve.grad(hydro.alpha_solution[m][0])[0] + ngsolve.grad(hydro.beta_solution[m][0])[1]) + \
@@ -302,10 +298,8 @@ class PostProcessing(object):
         phase = np.linspace(0, 1, num_frames, endpoint=True)
 
         sigma = self.hydro.constant_physical_parameters['sigma']
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         Z = np.zeros((num_frames, np.shape(refined_triangulation.x)[0]))
         U = np.zeros((num_frames, np.shape(refined_triangulation.x)[0]))
@@ -405,10 +399,8 @@ class PostProcessing(object):
         phase = np.linspace(0, 1, num_frames, endpoint=True)
 
         sigma = self.hydro.constant_physical_parameters['sigma']
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         if constituent == 1:
             for i in range(num_frames):
@@ -452,10 +444,8 @@ class PostProcessing(object):
         X, Y = np.meshgrid(x,y) 
 
         sigma = self.hydro.constant_physical_parameters['sigma']
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        
+        H = self.hydro.spatial_physical_parameters['H'].cf
         Uquiv = np.zeros(X.flatten().shape[0])
         Vquiv = np.zeros(X.flatten().shape[0])
         U = np.zeros(np.shape(refined_triangulation.x)[0])
@@ -508,10 +498,7 @@ class PostProcessing(object):
         refiner = tri.UniformTriRefiner(triangulation)
         refined_triangulation = refiner.refine_triangulation(subdiv=refinement_level)
 
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        H = self.hydro.spatial_physical_parameters['H'].cf
         # bathy_gradnorm = ngsolve.sqrt(H.gradient_cf[0]**2 + H.gradient_cf[1]**2)
         bathy = evaluate_CF_range(H, self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
 
@@ -827,10 +814,8 @@ class PostProcessing(object):
 
 
     def plot_vertical_profile_at_point(self, p, num_vertical_points, constituent_index, **kwargs):
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        
+        H = self.hydro.spatial_physical_parameters['H'].cf
         depth = evaluate_CF_point(H, self.hydro.mesh, p[0], p[1])
         z_range = np.linspace(-depth, 0, num_vertical_points)
 
@@ -864,10 +849,8 @@ class PostProcessing(object):
 
 
     def animate_vertical_profile_at_point(self, p, num_vertical_points, num_frames, **kwargs):
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         depth = evaluate_CF_point(H, self.hydro.mesh, p[0], p[1])
         z_range = np.linspace(-depth, 0, num_vertical_points)
@@ -936,10 +919,8 @@ class PostProcessing(object):
         y_range = np.linspace(p1[1], p2[1], num_horizontal_points)
         sigma_range = np.linspace(-1, 0, num_vertical_points)
 
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         depth = evaluate_CF_range(H, self.hydro.mesh, x_range, y_range)
 
@@ -990,10 +971,7 @@ class PostProcessing(object):
         x_range = np.linspace(p1[0], p2[0], num_horizontal_points)
         y_range = np.linspace(p1[1], p2[1], num_horizontal_points)
 
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         depth = evaluate_CF_range(H, self.hydro.mesh, x_range, y_range)
 
@@ -1056,10 +1034,7 @@ class PostProcessing(object):
         y_range = np.linspace(p1[1], p2[1], num_horizontal_points)
         sigma_range = np.linspace(-1, 0, num_vertical_points)
 
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         depth = evaluate_CF_range(H, self.hydro.mesh, x_range, y_range)
 
@@ -1168,10 +1143,7 @@ class PostProcessing(object):
         x_range = np.linspace(p1[0], p2[0], num_horizontal_points)
         y_range = np.linspace(p1[1], p2[1], num_horizontal_points)
 
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         depth = evaluate_CF_range(H, self.hydro.mesh, x_range, y_range)
 
@@ -1298,10 +1270,7 @@ class PostProcessing(object):
         y_range = np.linspace(p1[1], p2[1], num_horizontal_points)
         sigma_range = np.linspace(-1, 0, num_vertical_points)
 
-        if self.hydro.loaded_from_files:
-            H = self.hydro.spatial_physical_parameters['H']
-        else:
-            H = self.hydro.spatial_physical_parameters['H'].cf
+        H = self.hydro.spatial_physical_parameters['H'].cf
 
         depth = evaluate_CF_range(H, self.hydro.mesh, x_range, y_range)
 

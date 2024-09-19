@@ -25,6 +25,7 @@ import copy
 import os
 import timeit
 import json
+import dill
 
 import ngsolve
 from ngsolve.solvers import *
@@ -150,11 +151,12 @@ class Hydrodynamics(object):
         - gamma_solution (dict):                                dictionary of the solutions for the coefficients gamma_{i};
         - seaward_forcing (SeawardForcing):                     SeawardForcing-object containing the details of the seaward boundary condition;
         - riverine_forcing (RiverineForcing):                   RiverineForcing-object containing the details of the riverine (landward) boundary condition;
+        - scaling (bool):                                       flag indicating whether the geometry and hence the equations are scaled;
     
     """
 
     def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int, 
-                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis, scaling:bool = True):
+                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
         
         self.mesh = mesh
         self.model_options = model_options
@@ -186,7 +188,10 @@ class Hydrodynamics(object):
         self._setup_TnT()
         self._get_normalvec()
 
-        self.scaling = scaling
+        if abs(self.model_options['x_scaling'] - 1) > 1e-12 or abs(self.model_options['y_scaling'] - 1) > 1e-12:
+            self.scaling = True
+        else:
+            self.scaling = False
         
         # Get norms of the basis functions
 
@@ -208,8 +213,7 @@ class Hydrodynamics(object):
     # Private methods
 
     def _setup_fem_space(self):
-        U = ngsolve.H1(self.mesh, order=self.order) # a bit of a question whether this U fem space will also
-                                                    # need dirichlet=BOUNDARY_DICT[SEA], but anyway
+        U = ngsolve.H1(self.mesh, order=self.order) 
         G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
 
         list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
@@ -408,20 +412,18 @@ class Hydrodynamics(object):
     # def save_solution(self, filename):
     #     mesh_functions.save_gridfunction_to_txt(self.solution_gf, filename)
 
-    def save(self, foldername):
-        """Saves the hydrodynamics object to a collection of files contained in a folder. Only possible if the Fourier/vertical bases are chosen from the predefined 
+    def save(self, name, **kwargs):
+        """Saves the hydrodynamics object. Only possible if the Fourier/vertical bases are chosen from the predefined 
         bases in TruncationBasis.py. The folder contains:
         
         - options.txt:          contains the model options of the ModelOptions object, including which Fourier/vertical bases were used;
         - params.txt:           contains the SEM expansion basis order, M, imax and the constant physical parameters;
         - mesh.vol:             file that can be read by NGSolve to regenerate your mesh;
-        - spatial_parameters:   folder that contain GridFunctions of spatial parameters; does not contain data that can regenerate the sympy function handle
-                                or NGSolve Coefficient Function;
+        - spatial_parameters:   folder that contain function handles of spatial parameters;
         - solution.txt          file that contains the solution GridFunction;
 
         """
-
-        os.makedirs(foldername, exist_ok=True)
+        os.makedirs(name, exist_ok=True)
 
         # model options
 
@@ -430,7 +432,7 @@ class Hydrodynamics(object):
 
         options['advection_influence_matrix'] = options['advection_influence_matrix'].tolist()
 
-        f_options = open(f"{foldername}/options.json", 'x')
+        f_options = open(f"{name}/options.json", 'x')
         json.dump(options, f_options, indent=4)
         f_options.close()
 
@@ -438,7 +440,7 @@ class Hydrodynamics(object):
         #                  f"veddy_viscosity_assumption:{self.model_options['veddy_viscosity_assumption']}\ndensity:{self.model_options['density']}\n"+\
         #                  f"advection_epsilon:{self.model_options['advection_epsilon']}\nvertical_basis_name:{self.vertical_basis_name}"
         
-        # f_options = open(f"{foldername}/options.txt", 'x')
+        # f_options = open(f"{name}/options.txt", 'x')
         # f_options.write(options_string)
         # f_options.close()
 
@@ -447,7 +449,7 @@ class Hydrodynamics(object):
         params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax}
         params.update(self.constant_physical_parameters)
 
-        f_params = open(f"{foldername}/params.json", 'x')
+        f_params = open(f"{name}/params.json", 'x')
         json.dump(params, f_params, indent=4)
         f_params.close()
 
@@ -455,28 +457,33 @@ class Hydrodynamics(object):
         # for name, value in self.constant_physical_parameters.items():
         #     params_string += f"\n{name}:{value}"
         
-        # f_params = open(f"{foldername}/params.txt", 'x')
+        # f_params = open(f"{name}/params.txt", 'x')
         # f_params.write(params_string)
         # f_params.close()
 
         # mesh
 
-        self.mesh.ngmesh.Save(f'{foldername}/mesh.vol') # save the netgen mesh
+        self.mesh.ngmesh.Save(f'{name}/mesh.vol') # save the netgen mesh
 
         # spatial parameters
 
-        os.makedirs(f'{foldername}/spatial_parameters')
+        os.makedirs(f'{name}/spatial_parameters')
 
-        for name, value in self.spatial_physical_parameters.items():
-            oneDfemspace = ngsolve.H1(self.mesh, order = self.order)
-            gf = ngsolve.GridFunction(oneDfemspace)
-            gf.Set(value.cf)
+        for paramname, value in self.spatial_physical_parameters.items():
+            with open(f'{name}/spatial_parameters/{paramname}.pkl', 'wb') as file:
+                dill.dump(value.fh, file, protocol=dill.HIGHEST_PROTOCOL)
 
-            mesh_functions.save_gridfunction(gf, f"{foldername}/spatial_parameters/{name}")
+            # oneDfemspace = ngsolve.H1(self.mesh, order = self.order)
+            # gf = ngsolve.GridFunction(oneDfemspace)
+            # gf.Set(value.cf)
+
+            # mesh_functions.save_gridfunction(gf, f"{name}/spatial_parameters/{name}")
 
         # solution
 
-        mesh_functions.save_gridfunction(self.solution_gf, f"{foldername}/solution")
+        mesh_functions.save_gridfunction(self.solution_gf, f"{name}/solution", **kwargs)
+
+        
 
 
     def hrefine(self, threshold: float, numits: int = 1, based_on = 'bathygrad'):
@@ -793,17 +800,16 @@ class Hydrodynamics(object):
             return resnorm, invtime
         
 
-def load_hydrodynamics(foldername):
+def load_hydrodynamics(name, **kwargs):
     """Creates a Hydrodynamics object from a folder generated by the save-method of the Hydrodynamics object. This object can *only* be used for postprocessing.
     
     Arguments:
-        - foldername:       name of the folder the data may be found in
+        - name:       name of the folder the data may be found in
         
     """
-
     # options
 
-    f_options = open(f'{foldername}/options.json', 'r')
+    f_options = open(f'{name}/options.json', 'r')
     model_options: dict = json.load(f_options)
     
     vertical_basis_name = model_options.pop('vertical_basis_name')
@@ -816,10 +822,15 @@ def load_hydrodynamics(foldername):
     model_options['advection_influence_matrix'] = np.array(model_options['advection_influence_matrix'])
 
     f_options.close()
+
+    if abs(model_options['x_scaling'] - 1) > 1e-12 or abs(model_options['y_scaling'] - 1) > 1e-12:
+        scaling = True
+    else:
+        scaling = False
     
     # params
 
-    f_params = open(f'{foldername}/params.json', 'r')
+    f_params = open(f'{name}/params.json', 'r')
     params: dict = json.load(f_params)
 
     sem_order = params.pop('sem_order')
@@ -827,29 +838,37 @@ def load_hydrodynamics(foldername):
     imax = params.pop('imax')
     f_params.close()
     # the remainder of this dict constitutes the constant physical parameters of the simulation
-
-    time_basis = TruncationBasis.harmonic_time_basis(params['sigma']) # only this particular Fourier basis is supported
+    if scaling:
+        time_basis = TruncationBasis.unit_harmonic_time_basis  # only this particular type of Fourier basis is supported
+    else:
+        time_basis = TruncationBasis.harmonic_time_basis(params['sigma'])
 
     # mesh
 
-    mesh = ngsolve.Mesh(f'{foldername}/mesh.vol')
+    mesh = ngsolve.Mesh(f'{name}/mesh.vol')
+    bfc = generate_bfc(mesh, order=sem_order, method='diffusion', alpha=1)
 
     # Make Hydrodynamics object
     hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
     hydro.loaded_from_files = True
+    hydro.scaling = scaling
     
     # add spatial parameters
     hydro.spatial_physical_parameters = dict()
 
-    for param in os.listdir(f'{foldername}/spatial_parameters'):
+    for param in os.listdir(f'{name}/spatial_parameters'):
         filename = os.fsdecode(param)
         param_name = filename[:-4] # ignore file extension
+        with open(f'{name}/spatial_parameters/{param_name}.pkl', 'rb') as file:
+            param_fh = dill.load(file)
 
-        oneDfemspace = ngsolve.H1(mesh, order = sem_order)
-        gf = ngsolve.GridFunction(oneDfemspace)
-        mesh_functions.load_basevector(gf.vec.data, f'{foldername}/spatial_parameters/{filename}')
+        hydro.spatial_physical_parameters[param_name] = SpatialParameter(param_fh, bfc)
 
-        hydro.spatial_physical_parameters[param_name] = gf
+        # oneDfemspace = ngsolve.H1(mesh, order = sem_order)
+        # gf = ngsolve.GridFunction(oneDfemspace)
+        # mesh_functions.load_basevector(gf.vec.data, f'{name}/spatial_parameters/{filename}')
+
+        # hydro.spatial_physical_parameters[param_name] = gf
 
     # add constant parameters
 
@@ -857,7 +876,7 @@ def load_hydrodynamics(foldername):
 
     # add solution
     hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
-    mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{foldername}/solution.npy')
+    mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{name}/solution.npy', **kwargs)
 
     hydro._restructure_solution()
 

@@ -14,7 +14,7 @@ from minusonepower import minusonepower
 def add_bilinear_part(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions, 
                       umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax, constant_parameters: dict, spatial_parameters: dict, 
                       vertical_basis: TruncationBasis, normalalpha, forcing=True):
-    if model_options['bed_bc'] == 'no_slip' and model_options['surface_in_sigma'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
+    if model_options['bed_bc'] == 'no_slip' and not model_options['surface_in_sigma'] and model_options['veddy_viscosity_assumption'] == 'constant' and model_options['density'] == 'depth-independent':
         return _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunctions, gamma_trialfunctions,
                                                 umom_testfunctions, vmom_testfunctions, DIC_testfunctions, M, imax,
                                                 constant_parameters, spatial_parameters, vertical_basis, normalalpha, 
@@ -101,7 +101,6 @@ def _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunction
         if forcing:
             a += (0.5*g*ngsolve.sqrt(2)/sig*G5(k) * H *H * umom_testfunctions[k][0] * rho_x / rho) * ngsolve.dx # U-momentum
             a += (0.5*g*ngsolve.sqrt(2)/sig*G5(k) * H *H * vmom_testfunctions[k][0] * rho_y / rho) * ngsolve.dx # V-momentum
-
         # r = 0 term
         # U-momentum
         a += (-0.5/sig * Av * G3(k, k) * alpha_trialfunctions[k][0]*umom_testfunctions[k][0] / (H) - 
@@ -115,7 +114,7 @@ def _add_bilinear_part_NS_RL_EVC_DDI(a, alpha_trialfunctions, beta_trialfunction
         # r != 0-terms
         for r in range(1, imax + 1):
             # U-momentum
-            a += ((0.5*ngsolve.pi*r*H*alpha_trialfunctions[k][r] *umom_testfunctions[k][-r]- 
+            a += ((0.5*ngsolve.pi*r*H*alpha_trialfunctions[k][r] * umom_testfunctions[k][-r]- 
                     0.5/sig*Av*G3(k,k) * alpha_trialfunctions[k][-r] * umom_testfunctions[k][-r] / (H) - 
                     0.25*H*f/sig * beta_trialfunctions[k][-r] * umom_testfunctions[k][-r] + 
                     0.5*H*g/sig * G4(k) * ngsolve.grad(gamma_trialfunctions[-r])[0] * umom_testfunctions[k][-r]) + 
@@ -654,13 +653,13 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
         # else:
         a += sigma * np.pi * l * DIC_testfunctions[-l] * gamma_trialfunctions[l] * ngsolve.dx
         a += sum([0.5 * DIC_testfunctions[-l] * (H + R) * G4(m) * normalalpha[m][-l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)])
-        a += sum([ -0.5 * (H + R) * G4(m) * (ngsolve.grad(DIC_testfunctions[-l])[0] * alpha_trialfunctions[m][-l] / x_scaling +
-                                                                                ngsolve.grad(DIC_testfunctions[-l])[1] * beta_trialfunctions[m][-l] / y_scaling)  * ngsolve.dx for m in range(1, M)])
+        a += sum([-0.5 * (H + R) * G4(m) * (ngsolve.grad(DIC_testfunctions[-l])[0] * alpha_trialfunctions[m][-l] / x_scaling +
+                                            ngsolve.grad(DIC_testfunctions[-l])[1] * beta_trialfunctions[m][-l] / y_scaling)  * ngsolve.dx for m in range(1, M)])
         # l > 0
         a += sigma * np.pi * -l * DIC_testfunctions[l] * gamma_trialfunctions[-l] * ngsolve.dx
         a += sum([0.5 * DIC_testfunctions[l] * (H + R) * G4(m) * normalalpha[m][l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(1, M)])
         a += sum([-0.5 * (H + R) * G4(m) * (ngsolve.grad(DIC_testfunctions[l])[0] * alpha_trialfunctions[m][l] / x_scaling +
-                                                                                ngsolve.grad(DIC_testfunctions[l])[1] * beta_trialfunctions[m][l] / y_scaling)  * ngsolve.dx for m in range(1, M)])
+                                            ngsolve.grad(DIC_testfunctions[l])[1] * beta_trialfunctions[m][l] / y_scaling)  * ngsolve.dx for m in range(1, M)])
     
         
     # if time_of_integration == 'end':

@@ -26,10 +26,12 @@ import os
 import timeit
 import json
 import dill
+import pickle
+
 
 import ngsolve
 from ngsolve.solvers import *
-import pypardiso
+# import pypardiso
 
 import TruncationBasis
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
@@ -37,7 +39,6 @@ from boundary_fitted_coordinates import generate_bfc
 from spatial_parameter import SpatialParameter
 
 import define_weak_forms as weakforms
-from minusonepower import minusonepower
 import mesh_functions
 
 
@@ -181,6 +182,9 @@ class Hydrodynamics(object):
             raise ValueError(f"Invalidly shaped advection influence matrix, please provide a square boolean matrix of size imax+1: {self.imax+1}")
         elif self.model_options['advection_influence_matrix'].dtype != bool:
             raise ValueError(f"Invalid advection influence matrix, please provide a *boolean* matrix")
+        
+        self.mesh.ngmesh.SetGeometry(None) # This step is necessary to make sure the solution can be saved and loaded correctly, see https://forum.ngsolve.org/t/dofs-of-higher-order-1-basis-functions-being-ordered-differently/3061
+
 
         self._setup_fem_space()
         self.nfreedofs = count_free_dofs(self.femspace)
@@ -463,7 +467,13 @@ class Hydrodynamics(object):
 
         # mesh
 
-        self.mesh.ngmesh.Save(f'{name}/mesh.vol') # save the netgen mesh
+        # self.mesh.ngmesh.Save(f'{name}/mesh.vol') # save the netgen mesh
+        
+        with open(f"{name}/mesh.pkl", 'wb') as file:
+            pickle.dump(self.mesh, file)
+
+        with open(f"{name}/fespace.pkl", 'wb') as file:
+            pickle.dump(self.femspace, file)
 
         # spatial parameters
 
@@ -481,7 +491,11 @@ class Hydrodynamics(object):
 
         # solution
 
-        mesh_functions.save_gridfunction(self.solution_gf, f"{name}/solution", **kwargs)
+        # mesh_functions.save_gridfunction(self.solution_gf, f"{name}/solution", **kwargs)
+        with open(f'{name}/solution.pkl', 'wb') as file:
+            dill.dump(self.solution_gf, file)
+
+
 
         
 
@@ -676,12 +690,12 @@ class Hydrodynamics(object):
             du.vec.data = a.mat.Inverse(freedofs=self.femspace.FreeDofs(), inverse=method) * rhs
             # du.vec.data = a.mat.Inverse(inverse=method) * rhs
             inversion_time = timeit.default_timer() - inversion_start
-        elif method == 'ext_pardiso':
-            inversion_start = timeit.default_timer()
-            A = mesh_functions.get_csr_matrix(a.mat)
-            f = rhs.FV().NumPy()
-            sol_arr = pypardiso.spsolve(A, f)
-            du.vec.FV().NumPy()[:] = sol_arr
+        # elif method == 'ext_pardiso':
+        #     inversion_start = timeit.default_timer()
+        #     A = mesh_functions.get_csr_matrix(a.mat)
+        #     f = rhs.FV().NumPy()
+        #     sol_arr = pypardiso.spsolve(A, f)
+        #     du.vec.FV().NumPy()[:] = sol_arr
 
             inversion_time = timeit.default_timer() - inversion_start
 
@@ -746,7 +760,7 @@ class Hydrodynamics(object):
         if self.loaded_from_files:
             print("Unable to solve: this Hydrodynamics object was loaded from files and can only be used for postprocessing")
             return
-
+        
         # Set up FEM space
         print(f"\nSetting up Finite Element Space for {'linear' if skip_nonlinear else f'{advection_weighting_parameter_list[0]}-non-linear'} simulation with {self.M} vertical modes and {self.imax+1} harmonic\n"
               +f"components (including subtidal). In total, there are {(2*self.M + 1)*(2*self.imax+1)} equations.\n"
@@ -845,13 +859,18 @@ def load_hydrodynamics(name, **kwargs):
 
     # mesh
 
-    mesh = ngsolve.Mesh(f'{name}/mesh.vol')
+    # mesh = ngsolve.Mesh(f'{name}/mesh.vol')
+
+    with open(f'{name}/mesh.pkl', 'rb') as file:
+        mesh = dill.load(file)
+
     bfc = generate_bfc(mesh, order=sem_order, method='diffusion', alpha=1)
 
     # Make Hydrodynamics object
     hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
     hydro.loaded_from_files = True
     hydro.scaling = scaling
+
     
     # add spatial parameters
     hydro.spatial_physical_parameters = dict()
@@ -875,8 +894,12 @@ def load_hydrodynamics(name, **kwargs):
     hydro.constant_physical_parameters = params
 
     # add solution
-    hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
-    mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{name}/solution.npy', **kwargs)
+
+    with open(f'{name}/solution.pkl', 'rb') as file:
+        hydro.solution_gf = dill.load(file)
+
+    # hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
+    # mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{name}/solution.npy', **kwargs)
 
     hydro._restructure_solution()
 

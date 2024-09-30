@@ -58,8 +58,8 @@ imax = 1 # amount of tidal constituents in addition to subtidal flow
 # constant physical parameters
 
 g = 9.81 # gravitational acceleration
-# f = 1e-4 # Coriolis acceleration
-f = 0
+f = 1e-4 # Coriolis acceleration
+# f = 0
 Av = 0.01 # vertical eddy viscosity
 rho0 = 1020 # reference water density
 # beta = 7.6e-4 # coefficient of saline contraction
@@ -92,12 +92,20 @@ def make_rho(ref_dens, saline_contraction):
         return ref_dens * (1 + saline_contraction * S)
     return rho
 
+
+def make_ramp(slope, offset):
+    def ramp(xi, eta):
+        return sympy.tanh((xi-offset) * slope) + 1
+    return ramp
+
+
 def R(xi, eta):
     return 0 * xi
 
 H_sp = SpatialParameter(make_H(Hoffset, Hscale, C), bfc)
 rho_sp = SpatialParameter(make_rho(rho0, beta), bfc)
 R_sp = SpatialParameter(R, bfc)
+ramp_sp = SpatialParameter(make_ramp(10, 0.2), bfc)
 
 # STEP 3: Define expansion bases ============================================================================
 
@@ -124,9 +132,9 @@ model_options = select_model_options(bed_bc='no_slip',
                                      surface_in_sigma=False,
                                      veddy_viscosity_assumption='constant', 
                                      density='depth-independent',
-                                     advection_epsilon=0.1,
+                                     advection_epsilon=0.5,
                                      advection_influence_matrix=np.array([[True, True],
-                                                                          [True, True]]),
+                                                                          [False, False]]),
                                      x_scaling=x_scale,
                                      y_scaling=y_scale)
 
@@ -134,7 +142,7 @@ model_options = select_model_options(bed_bc='no_slip',
 
 hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f)
-hydro.set_spatial_physical_parameters(H=H_sp, density=rho_sp, R=R_sp)
+hydro.set_spatial_physical_parameters(H=H_sp, density=rho_sp, R=R_sp, nonlinear_ramp=ramp_sp)
 
 
 
@@ -159,7 +167,7 @@ hydro.set_riverine_boundary_condition(discharge_amplitude_list, discharge_phase_
 
 # STEP 5: Solve the equations ===============================================================================
 
-advection_epsilon_list = [0, 0.1] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
+advection_epsilon_list = [0, 0.5] # this is a list to allow for homology methods in the Newton method; the solution procedure could really use a rewrite as well; this is not so intuitive
 
 
 
@@ -177,8 +185,8 @@ plt.rcParams["font.family"] = 'serif'
 # endpoints of cross-section plots
 
 if method == 'new':
-    p1 = np.array([0.5,0.5])
-    p2 = np.array([0.5,-0.5])
+    p1 = np.array([0.6,0.5])
+    p2 = np.array([0.6,-0.5])
 elif method == 'old':
     p1 = np.array([L/2, B/2])
     p2 = np.array([L/2,-B/2])
@@ -186,6 +194,7 @@ elif method == 'old':
 
 
 # # create plots
+postpro.plot_colormap(ramp_sp.cf, refinement_level=4, title='Non-linear ramp', clabel='-', figsize=(7,4))
 postpro.plot_colormap(postpro.u_DA_abs(1), refinement_level=4, show_mesh=False, title='Amplitude of depth-averaged semidiurnal along-channel velocity', clabel='Velocity [m/s]', figsize=(7,4))
 postpro.plot_colormap(postpro.v_DA_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of depth-averaged semidiurnal cross-channel velocity", clabel="Velocity [m/s]", figsize=(7,4))
 postpro.plot_colormap(postpro.gamma_abs(1), refinement_level=4, show_mesh=False, title="Amplitude of semidiurnal surface elevation", clabel="Surface elevation [m]", figsize=(7,4))

@@ -557,13 +557,15 @@ class Hydrodynamics(object):
             self.constant_physical_parameters['f'] = f
 
 
-    def set_spatial_physical_parameters(self, H=None, density=None, R=None):
+    def set_spatial_physical_parameters(self, H=None, density=None, R=None, nonlinear_ramp=None):
         if H is not None:
             self.spatial_physical_parameters['H'] = H
         if density is not None:
             self.spatial_physical_parameters['density'] = density
         if R is not None:
             self.spatial_physical_parameters['R'] = R
+        if nonlinear_ramp is not None:
+            self.spatial_physical_parameters['non-linear ramp'] = nonlinear_ramp
 
 
     def set_seaward_boundary_condition(self, amplitude_list, phase_list):

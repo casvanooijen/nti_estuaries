@@ -183,7 +183,7 @@ class Hydrodynamics(object):
         elif self.model_options['advection_influence_matrix'].dtype != bool:
             raise ValueError(f"Invalid advection influence matrix, please provide a *boolean* matrix")
         
-        self.mesh.ngmesh.SetGeometry(None) # This step is necessary to make sure the solution can be saved and loaded correctly, see https://forum.ngsolve.org/t/dofs-of-higher-order-1-basis-functions-being-ordered-differently/3061
+        # self.mesh.ngmesh.SetGeometry(None) # This step is necessary to make sure the solution can be saved and loaded correctly, see https://forum.ngsolve.org/t/dofs-of-higher-order-1-basis-functions-being-ordered-differently/3061
 
 
         self._setup_fem_space()
@@ -301,7 +301,7 @@ class Hydrodynamics(object):
             weakforms.add_weak_form(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                 self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
                                 self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
-                                self.riverine_forcing.normal_alpha, only_linear=(not skip_nonlinear))
+                                self.riverine_forcing.normal_alpha, only_linear=skip_nonlinear)
         else:
             weakforms.add_bilinear_part(a_total, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
@@ -538,6 +538,8 @@ class Hydrodynamics(object):
             if num_refined == 0:
                 break
 
+        self.nfreedofs = count_free_dofs(self.femspace)
+
 
 
     def set_constant_physical_parameters(self, Av=None, sigma=None, T=None, g=None, f=None):
@@ -627,20 +629,12 @@ class Hydrodynamics(object):
         self._restructure_solution()
         forms_start = timeit.default_timer()
         a = ngsolve.BilinearForm(self.femspace)
-        # weakforms.add_bilinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-        #                             self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
-        #                             self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis,
-        #                             self.riverine_forcing.normal_alpha, forcing=True)
         if self.scaling:
             weakforms.add_weak_form(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
                                     self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,
                                     self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis,
                                     self.riverine_forcing.normal_alpha, only_linear=True)
             if advection_weighting_parameter != 0:
-                # weakforms.add_linearised_nonlinear_part(a, self.model_options, self.alpha_trialfunctions, self.beta_trialfunctions, self.gamma_trialfunctions,
-                #                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.alpha_solution, self.beta_solution, self.gamma_solution,
-                #                                         self.M, self.imax, self.constant_physical_parameters, self.spatial_physical_parameters, self.vertical_basis, self.time_basis, self.riverine_forcing.normal_alpha,
-                #                                         advection_weighting_parameter, self.n)
                 weakforms.add_linearised_nonlinear_terms(a, self.model_options, self.alpha_trialfunctions, self.alpha_solution, self.beta_trialfunctions, self.beta_solution,
                                                         self.gamma_trialfunctions, self.gamma_solution, 
                                                         self.umom_testfunctions, self.vmom_testfunctions, self.DIC_testfunctions, self.M, self.imax,

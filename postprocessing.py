@@ -206,9 +206,12 @@ class PostProcessing(object):
             colormesh = ax_colormap.tripcolor(refined_triangulation, eval_gfu, **kwargs)
 
         if contourlines:
-            levels = np.linspace(np.min(eval_gfu), np.max(eval_gfu), num_levels*(subamplitude_lines+1))
-            contour = ax_colormap.tricontour(refined_triangulation, eval_gfu, levels, colors=['k'] + ["0.4"] * subamplitude_lines, linewidths=[.5] * (1+subamplitude_lines))
-            ax_colormap.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
+            try:
+                levels = np.linspace(np.min(eval_gfu), np.max(eval_gfu), num_levels*(subamplitude_lines+1))
+                contour = ax_colormap.tricontour(refined_triangulation, eval_gfu, levels, colors=['k'] + ["0.4"] * subamplitude_lines, linewidths=[.5] * (1+subamplitude_lines))
+                ax_colormap.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
+            except ValueError:
+                print("Constant solution; plotting contour lines impossible")
 
         ax_colormap.set_title(title)
         cbar = fig_colormap.colorbar(colormesh)
@@ -235,12 +238,16 @@ class PostProcessing(object):
         fig_contour, ax_contour = plt.subplots()
         if show_mesh:
             ax_contour.triplot(triangulation, linewidth=.5, color='k', zorder=2)
-        contourf = ax_contour.tricontourf(refined_triangulation, eval_gfu, levels, **kwargs)
-        contour = ax_contour.tricontour(refined_triangulation, eval_gfu, levels, colors=['k'] + ["0.4"] * subamplitude_lines)
+        
+        try:
+            contourf = ax_contour.tricontourf(refined_triangulation, eval_gfu, levels, **kwargs)
+            contour = ax_contour.tricontour(refined_triangulation, eval_gfu, levels, colors=['k'] + ["0.4"] * subamplitude_lines)
 
-        ax_contour.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
-        ax_contour.set_title(title)
-        cbar = fig_contour.colorbar(contourf)
+            ax_contour.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
+            ax_contour.set_title(title)
+            cbar = fig_contour.colorbar(contourf)
+        except ValueError:
+            print("Constant solution; plotting contour lines impossible")
 
         if save is not None:
             fig_contour.savefig(save)

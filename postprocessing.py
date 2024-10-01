@@ -1042,15 +1042,16 @@ class PostProcessing(object):
         sigma_range = np.linspace(-1, 0, num_vertical_points)
 
         H = self.hydro.spatial_physical_parameters['H'].cf
+        epsilon = self.hydro.model_options['advection_epsilon']
 
         depth = evaluate_CF_range(H, self.hydro.mesh, x_range, y_range)
 
         s_grid = np.tile(s_range, (num_vertical_points, 1))
         z_grid = np.array([np.linspace(-depth[i], 0, num_vertical_points) for i in range(num_horizontal_points)]).T
 
-        uux = lambda sig: 0.5 * self.hydro.epsilon * (self.u(1, sig) * self.ux(1, sig) + self.u(-1, sig) * self.ux(-1, sig))
-        vuy = lambda sig: 0.5 * self.hydro.epsilon * (self.v(1, sig) * self.uy(1, sig) + self.v(-1, sig) * self.uy(-1, sig))
-        wuz = lambda sig: 0.5 / H * self.hydro.epsilon * (self.w(1, sig) * self.usig(1, sig) + self.w(-1, sig) * self.usig(-1, sig))
+        uux = lambda sig: 0.5 * epsilon * (self.u(1, sig) * self.ux(1, sig) + self.u(-1, sig) * self.ux(-1, sig))
+        vuy = lambda sig: 0.5 * epsilon * (self.v(1, sig) * self.uy(1, sig) + self.v(-1, sig) * self.uy(-1, sig))
+        wuz = lambda sig: 0.5 / H * epsilon * (self.w(1, sig) * self.usig(1, sig) + self.w(-1, sig) * self.usig(-1, sig))
         zetax = lambda sig: self.hydro.constant_physical_parameters['g'] * self.gammax(0)
         fv = lambda sig: -self.hydro.constant_physical_parameters['f'] * self.v(0, sig)
 

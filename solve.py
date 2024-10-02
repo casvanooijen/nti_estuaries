@@ -58,7 +58,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         hydro.constant_physical_parameters['Av'] = true_Av * continuation_parameters['Av'][continuation_counter]
 
         print(f"\nCONTINUATION STEP {continuation_counter}: Epsilon = {hydro.model_options['advection_epsilon']}, Av = {hydro.constant_physical_parameters['Av']}.\n")
-        print("Setting up full weak-form\n")
+        print("Setting up full weak form\n")
 
         hydro.setup_forms(skip_nonlinear = (hydro.model_options['advection_epsilon'] == 0))
 

@@ -653,7 +653,7 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                     if H3_iszero(i,j,0): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                         continue
                     else:
-                        if advection_matrix[0, i] and advection_matrix[0, j]:
+                        if advection_matrix[0, abs(i)] and advection_matrix[0, abs(j)]:
                             a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling  * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                             a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                             a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,0) * G2(m,n,p) * (
@@ -709,7 +709,7 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                         if H3_iszero(i,j,-l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                             continue
                         else:
-                            if advection_matrix[l, i] and advection_matrix[l, j]:
+                            if advection_matrix[l, abs(i)] and advection_matrix[l, abs(j)]:
                                 a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                                 a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                                 a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,-l) * G2(m,n,p) * (
@@ -736,7 +736,7 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                         if H3_iszero(i,j,l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                             continue
                         else:
-                            if advection_matrix[l, i] and advection_matrix[l, j]:                              
+                            if advection_matrix[l, abs(i)] and advection_matrix[l, abs(j)]:                              
                                 a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * alpha_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                                 a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * beta_trialfunctions[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                                 a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,l) * G2(m,n,p) * (
@@ -880,7 +880,7 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
                 if H3_iszero(i,j,0): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                     continue
                 else:
-                    if advection_matrix[0, i] and advection_matrix[0, j]:
+                    if advection_matrix[0, abs(i)] and advection_matrix[0, abs(j)]:
                         a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                         a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,0) * umom_testfunctions[p][0] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                         a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,0) * G2(m,n,p) * (
@@ -934,7 +934,7 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
                     if H3_iszero(i,j,-l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                         continue
                     else:
-                        if advection_matrix[l, i] and advection_matrix[l, j]:
+                        if advection_matrix[l, abs(i)] and advection_matrix[l, abs(j)]:
                             a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                             a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,-l) * umom_testfunctions[p][-l] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                             a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,-l) * G2(m,n,p) * (
@@ -982,7 +982,7 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
                     if H3_iszero(i,j,l): # if H^3_{i,j,l} is equal to zero, this iteration can just be skipped;
                         continue
                     else:
-                        if advection_matrix[l, i] and advection_matrix[l, j]:
+                        if advection_matrix[l, abs(i)] and advection_matrix[l, abs(j)]:
                             a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * alpha0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[0] / x_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                             a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,l) * umom_testfunctions[p][l] * G1(m,n,p) * beta0[m][i] * ngsolve.grad(alpha_trialfunctions[n][j])[1] / y_scaling * ngsolve.dx for n in range(0, M)]) for m in range(0, M)])
                             a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,l) * G2(m,n,p) * (

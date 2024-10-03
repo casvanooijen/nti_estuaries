@@ -9,7 +9,7 @@ import define_weak_forms as weakforms
 
 
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
-          continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'matrix_norm'):
+          continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm'):
 
     """
     
@@ -23,7 +23,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - tolerance (float):                if the stopping criterion is less than this value, the Newton method terminates and the procedure moves to the next continuation step;
         - linear_solver:                    choice of linear solver; options: 'pardiso', ..
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
-        - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm';
+        - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
     
     """
 

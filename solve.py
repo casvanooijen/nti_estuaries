@@ -156,4 +156,16 @@ def is_symmetric(mat: sp.csr_matrix, tol=1e-12):
     return not np.any(np.absolute(diff.data) >= tol * np.ones_like(diff.data))
 
 
+def basematrix_to_csr_matrix(mat: ngsolve.BaseMatrix):
+    """Converts an ngsolve BaseMatrix to a scipy sparse matrix in CSR-format. Returns the CSR-matrix
+    
+    Arguments:
+
+    - mat:      to-be-converted BaseMatrix      
+        
+    """
+    rows, cols, vals = mat.COO()
+    return sp.csr_matrix((vals, (rows, cols)))
+
+
 # Linear solvers

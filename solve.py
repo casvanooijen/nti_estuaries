@@ -8,6 +8,9 @@ from hydrodynamics import *
 import define_weak_forms as weakforms
 
 
+# Main function
+
+
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
           continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm'):
 
@@ -138,3 +141,19 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
     print('\nSolution process complete.')
 
 
+# Utility functions for sparse matrices
+
+def is_symmetric(mat: sp.csr_matrix, tol=1e-12):
+    """Returns True if a sparse matrix (CSR) is symmetric within a certain (absolute) tolerance.
+    
+    Arguments:
+
+    - mat (sp.csr_matrix):      sparse matrix to be checked;
+    - tol (float):              if elements are further apart than this number, the function returns False.
+    
+    """
+    diff = mat - mat.transpose()
+    return not np.any(np.absolute(diff.data) >= tol * np.ones_like(diff.data))
+
+
+# Linear solvers

@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse.linalg import spsolve, eigs, qmr, gmres
 import timeit
 import ngsolve
 import copy
@@ -24,7 +25,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - hydro (Hydrodynamics):            object containing the (weak) model equations and options;
         - max_iterations (int):             maximum number of Newton iterations per continuation step;
         - tolerance (float):                if the stopping criterion is less than this value, the Newton method terminates and the procedure moves to the next continuation step;
-        - linear_solver:                    choice of linear solver; options: 'pardiso', ..
+        - linear_solver:                    choice of linear solver; options: 'pardiso', 'scipy_direct', ...
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
         - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
     
@@ -105,6 +106,25 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             inversion_start = timeit.default_timer()
             if linear_solver == 'pardiso':
                 du.vec.data = a.mat.Inverse(freedofs=hydro.femspace.FreeDofs(), inverse='pardiso') * rhs
+            elif linear_solver == 'scipy_direct':
+                freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
+                mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
+                rhs_arr = rhs.FV().NumPy()[freedof_list]
+
+                # if newton_counter > 0:
+                #     eigs, _ = np.linalg.eig(mat.todense())
+                #     abs_eigs = np.absolute(eigs)
+                #     print(f'    Condition number is equal to {np.amax(abs_eigs)/ np.amin(abs_eigs)}')
+                #     print(f'    NNZ: {mat.nnz}')
+                    
+                #     fig, ax = plt.subplots()
+                #     ax.plot(np.sort(abs_eigs)[::-1])
+                #     ax.set_title(f'Spectrum in iteration {newton_counter}')
+                #     ax.set_yscale('log')
+
+
+                sol = spsolve(mat, rhs_arr)
+                du.vec.FV().NumPy()[freedof_list] = sol
             else:
                 raise ValueError(f"Linear solver '{linear_solver}' not known to the system.")
             inversion_time = timeit.default_timer() - inversion_start
@@ -143,17 +163,19 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
 # Utility functions for sparse matrices
 
-def is_symmetric(mat: sp.csr_matrix, tol=1e-12):
-    """Returns True if a sparse matrix (CSR) is symmetric within a certain (absolute) tolerance.
+
+def get_freedof_list(freedof_bitarray):
+    """Constructs a list containing the indices of the free degrees of freedom, generated from a bitarray from ngsolve.
     
     Arguments:
-
-    - mat (sp.csr_matrix):      sparse matrix to be checked;
-    - tol (float):              if elements are further apart than this number, the function returns False.
     
+        - freedof_bitarray:     bitarray indicating which degree of freedom is free.
     """
-    diff = mat - mat.transpose()
-    return not np.any(np.absolute(diff.data) >= tol * np.ones_like(diff.data))
+    freedof_list = []
+    for i, isFree in enumerate(freedof_bitarray):
+        if isFree:
+            freedof_list.append(i)
+    return freedof_list
 
 
 def basematrix_to_csr_matrix(mat: ngsolve.BaseMatrix):
@@ -167,5 +189,100 @@ def basematrix_to_csr_matrix(mat: ngsolve.BaseMatrix):
     rows, cols, vals = mat.COO()
     return sp.csr_matrix((vals, (rows, cols)))
 
+
+def remove_fixeddofs_from_csr(mat, freedof_list):
+    """Removes all of the fixed degrees of freedom from a scipy sparse matrix in CSR-format.
+    
+    Arguments:
+
+        - mat:              matrix to be sliced;
+        - freedof_list:     list of degrees of freedom to be kept; obtainable via `get_freedof_list`.
+
+    """
+
+    mat = mat[freedof_list, :]
+    mat = mat[:, freedof_list]
+    return mat
+
+
+# Properties of matrices
+
+def is_symmetric(mat: sp.csr_matrix, tol=1e-12):
+    """Returns True if a sparse matrix (CSR) is symmetric within a certain (absolute) tolerance.
+    
+    Arguments:
+
+    - mat (sp.csr_matrix):      sparse matrix to be checked;
+    - tol (float):              if elements are further apart than this number, the function returns False.
+    
+    """
+    diff = mat - mat.transpose()
+    return not np.any(np.absolute(diff.data) >= tol * np.ones_like(diff.data))
+
+
+def get_eigenvalue(mat, shift_inverse=False, maxits = 100, tol=1e-9):
+    """Computes the largest eigenvalue of a matrix (sparse or otherwise) using the power method. If shift_inverse is True, then the method computes the smallest eigenvalue using
+    the shift-inverse version of the power method.
+    
+    Arguments:
+
+        - mat:                  matrix for which the eigenvalue is computed;
+        - shift_inverse:        if True, uses shift inverse version of power method to compute the smallest eigenvalue.
+        - maxits:               maximum number of iterations
+    
+    """
+
+    previous_vec = np.random.randn(mat.shape[0]) # starting vector
+    previous_eig = 0
+
+    if not shift_inverse:
+        for i in range(maxits):
+            new_vec = mat @ previous_vec
+            new_eig = np.inner(np.conj(previous_vec), new_vec)
+            previous_vec = new_vec / np.linalg.norm(new_vec, ord=2)
+
+            stopvalue = abs(new_eig - previous_eig) / abs(new_eig)
+            if stopvalue < tol:
+                break
+
+            previous_eig = new_eig
+
+            if i == maxits - 1:
+                print('Method did not converge')
+    else:
+        for i in range(maxits):
+            new_vec = spsolve(mat, previous_vec)
+            new_eig = np.inner(np.conj(previous_vec), new_vec)
+
+            previous_vec = new_vec / np.linalg.norm(new_vec, ord=2)
+
+            stopvalue = abs(new_eig - previous_eig) / abs(new_eig)
+            if stopvalue < tol:
+                break
+
+            previous_eig = new_eig
+
+            if i == maxits - 1:
+                print('Method did not converge')
+
+    if shift_inverse:
+        return 1 / new_eig
+    else:
+        return new_eig
+
+
+def get_condition_number(mat, maxits = 100, tol=1e-9):
+    """Computes 2-condition number of a sparse matrix by approximating the largest and smallest (in modulus) eigenvalues.
+    
+    Arguments:
+
+    - mat:              sparse matrix;
+    - maxits:           maximum number of iterations used in the power method;
+    - tol:              tolerance used in the power method.
+
+    """
+    large_eig = abs(get_eigenvalue(mat, shift_inverse=False, maxits=maxits, tol=tol))
+    small_eig = abs(get_eigenvalue(mat, shift_inverse=True, maxits=maxits, tol=tol))
+    return large_eig / small_eig
 
 # Linear solvers

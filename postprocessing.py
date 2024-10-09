@@ -217,8 +217,11 @@ class PostProcessing(object):
         cbar = fig_colormap.colorbar(colormesh)
         cbar.ax.set_ylabel(clabel)
 
-        ax_colormap.set_xlabel('x [m]')
-        ax_colormap.set_ylabel('y [m]')
+        ax_colormap.set_xticklabels(np.round(ax_colormap.get_xticks() * self.hydro.model_options['x_scaling'] / 1e3, 1))
+        ax_colormap.set_yticklabels(np.round(ax_colormap.get_yticks() * self.hydro.model_options['y_scaling'] / 1e3, 1))
+
+        ax_colormap.set_xlabel('x [km]')
+        ax_colormap.set_ylabel('y [km]')
 
         if save is not None:
             fig_colormap.savefig(save)
@@ -920,7 +923,8 @@ class PostProcessing(object):
 
     def plot_vertical_cross_section(self, quantity_function, title, clabel, p1, p2, num_horizontal_points, num_vertical_points, center_range=False, save=None, contourlines=True, num_levels=None, figsize=(12,6), **kwargs):
         
-        width = np.linalg.norm(p1-p2, 2)
+        scaling_vec = np.array([self.hydro.model_options['x_scaling'], self.hydro.model_options['y_scaling']])
+        width = np.linalg.norm((p1-p2) * scaling_vec, 2) / 1e3
         s_range = np.linspace(width/2, -width/2, num_horizontal_points)
         x_range = np.linspace(p1[0], p2[0], num_horizontal_points)
         y_range = np.linspace(p1[1], p2[1], num_horizontal_points)
@@ -963,8 +967,9 @@ class PostProcessing(object):
             
         # ax_crosssection.set_xticks(-ax_crosssection.get_xticks())
         ax_crosssection.set_title(title)
-        ax_crosssection.set_xlabel('y [m]')
+        ax_crosssection.set_xlabel('Distance along cross-section [km]')
         ax_crosssection.set_ylabel('-Depth [m]')
+
 
         plt.tight_layout()
 

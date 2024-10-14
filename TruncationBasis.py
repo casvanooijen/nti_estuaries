@@ -261,29 +261,187 @@ def harmonic_time_basis(sigma):
         return p != -q
         
     def analytical_H3(p, q, r):
-        if p>=0 and q>=0 and r>=0:
-            if p == q+r or q == p+r or r == p+q:
-                return 0.25 / sigma
+        # if p>=0 and q>=0 and r>=0:
+        #     if p == q+r or q == p+r or r == p+q:
+        #         return 0.25 / sigma
+        #     else:
+        #         return 0
+        # elif (p>=0 and q<0 and r<0) or (q>=0 and p<0 and r<0) or (r>=0 and p<0 and q<0):
+        #     sorted_list = sorted([p, q, r])
+        #     if sorted_list[2] == abs(sorted_list[0]) + abs(sorted_list[1]):
+        #         return -0.25 / sigma
+        #     elif (sorted_list[0] == -sorted_list[2]+sorted_list[1]) or (sorted_list[1] == -sorted_list[2]+sorted_list[0]):
+        #         return 0.25 / sigma
+        #     else:
+        #         return 0
+        # else:
+        #     return 0
+        
+        # To calculate this, we systematically treat all cases for positivity/negativity starting with r, then q, and then p
+
+        if r == 0:
+            if p == q:
+                return 0.25 * np.sqrt(2) / sigma
             else:
                 return 0
-        elif (p>=0 and q<0 and r<0) or (q>=0 and p<0 and r<0) or (r>=0 and p<0 and q<0):
-            sorted_list = sorted([p, q, r])
-            if sorted_list[2] == abs(sorted_list[0]) + abs(sorted_list[1]):
-                return -0.25 / sigma
-            elif (sorted_list[0] == -sorted_list[2]+sorted_list[1]) or (sorted_list[1] == -sorted_list[2]+sorted_list[0]):
-                return 0.25 / sigma
+        elif r > 0:
+            if q == 0:
+                if p == r:
+                    return 0.25 * np.sqrt(2) / sigma
+                else:
+                    return 0
+            elif q > 0:
+                if q == r:
+                    if p == 0:
+                        return 0.25 * np.sqrt(2) / sigma
+                    elif p == 2 * r:
+                        return 0.25 / sigma
+                    else:
+                        return 0
+                else:
+                    if p == abs(r-q) or p == r+q:
+                        return 0.25 / sigma
+                    else:
+                        return 0
+            elif q < 0:
+                if q == -r:
+                    if p == -2 * r:
+                        return 0.25 / sigma
+                    else:
+                        return 0
+                else:
+                    if p == -abs(r+q):
+                        return 0.25 / sigma if q < -r else -0.25 / sigma
+                    elif p == -abs(r-q):
+                        return 0.25 / sigma
+                    else:
+                        return 0
+            else:
+                return 0
+        elif r < 0:
+            if q == 0:
+                if p == r:
+                    return 0.25 * np.sqrt(2) / sigma
+                else:
+                    return 0
+            elif q > 0:
+                if q == -r:
+                    if p == -abs(r-q):
+                        return 0.25 / sigma
+                    else:
+                        return 0
+                else:
+                    if p == -abs(r+q):
+                        return 0.25 / sigma if q < -r else -0.25 / sigma
+                    elif p == -abs(r-q):
+                        return 0.25 / sigma
+                    else:
+                        return 0
+            elif q < 0:
+                if q == r:
+                    if p == 0:
+                        return 0.25 * np.sqrt(2) / sigma
+                    elif p == abs(r+q):
+                        return -0.25 / sigma
+                    else:
+                        return 0
+                else:
+                    if p == abs(r+q):
+                        return -0.25 / sigma
+                    elif p == abs(r-q):
+                        return 0.25 / sigma
+                    else:
+                        return 0
             else:
                 return 0
         else:
             return 0
         
     def H3_iszero(p, q, r):
-        if p>=0 and q>=0 and r>=0:
-            return not ((p == q+r) or (q == p+r) or (r == p+q))
-        elif (p>= 0 and q<0 and r<0) or (q>=0 and p<0 and r<0) or (r>=0 and p<0 and q<0):
-            sorted_list = sorted([p, q, r])
-            return not ((sorted_list[2] == abs(sorted_list[0]) + abs(sorted_list[1])) or (sorted_list[0] == -sorted_list[2]+sorted_list[1]) or (sorted_list[1] == -sorted_list[2]+sorted_list[0]))
-        
+        # if p>=0 and q>=0 and r>=0:
+        #     return not ((p == q+r) or (q == p+r) or (r == p+q))
+        # elif (p>= 0 and q<0 and r<0) or (q>=0 and p<0 and r<0) or (r>=0 and p<0 and q<0):
+        #     sorted_list = sorted([p, q, r])
+        #     return not ((sorted_list[2] == abs(sorted_list[0]) + abs(sorted_list[1])) or (sorted_list[0] == -sorted_list[2]+sorted_list[1]) or (sorted_list[1] == -sorted_list[2]+sorted_list[0]))
+        if r == 0:
+            if p == q:
+                return False
+            else:
+                return True
+        elif r > 0:
+            if q == 0:
+                if p == r:
+                    return False
+                else:
+                    return True
+            elif q > 0:
+                if q == r:
+                    if p == 0:
+                        return False
+                    elif p == 2 * r:
+                        return False
+                    else:
+                        return True
+                else:
+                    if p == abs(r-q) or p == r+q:
+                        return False
+                    else:
+                        return True
+            elif q < 0:
+                if q == -r:
+                    if p == -2 * r:
+                        return False
+                    else:
+                        return True
+                else:
+                    if p == -abs(r+q):
+                        return False
+                    elif p == -abs(r-q):
+                        return False
+                    else:
+                        return True
+            else:
+                return True
+        elif r < 0:
+            if q == 0:
+                if p == r:
+                    return False
+                else:
+                    return True
+            elif q > 0:
+                if q == -r:
+                    if p == -abs(r-q):
+                        return False
+                    else:
+                        return True
+                else:
+                    if p == -abs(r+q):
+                        return False
+                    elif p == -abs(r-q):
+                        return False
+                    else:
+                        return True
+            elif q < 0:
+                if q == r:
+                    if p == 0:
+                        return False
+                    elif p == abs(r+q):
+                        return False
+                    else:
+                        return True
+                else:
+                    if p == abs(r+q):
+                        return False
+                    elif p == abs(r-q):
+                        return False
+                    else:
+                        return False
+            else:
+                return True
+        else:
+            return True
+
+
         
     time_basis.add_analytical_tensors({'H2': analytical_H2,
                                        'H2_iszero': H2_iszero,

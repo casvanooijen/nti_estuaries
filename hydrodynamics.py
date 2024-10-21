@@ -34,7 +34,7 @@ from ngsolve.solvers import *
 # import pypardiso
 
 import TruncationBasis
-from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
+from geometry.create_geometry import RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
 from boundary_fitted_coordinates import generate_bfc
 from spatial_parameter import SpatialParameter
 
@@ -75,7 +75,7 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
             vec[i] = 0.
 
 
-def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', density:str = 'depth-independent',
+def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', horizontal_diffusion: bool = True, density:str = 'depth-independent',
                  advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1):
     
     """
@@ -87,6 +87,7 @@ def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, v
         - bed_bc:                                   indicates what type of boundary condition is used at the river bed ('no_slip' or 'partial_slip');
         - surface_in_sigma (bool):                  flag to indicate whether non-linear effects stemming from presence of the surface in the sigma-coordinates are included;
         - veddy_viscosity_assumption:               structure of the vertical eddy viscosity parameter ('constant' or 'depth-scaled&constantprofile' or ...);
+        - horizontal_diffusion (bool):              flag to indicate whether horizontal eddy viscosity terms should be incorporated (this changes the order of the equations, the boundary conditions (and FESpace), and the structure of the weak forms);
         - density:                                  indicates what type of water density field is used ('depth-independent' or ...);
         - advection_epsilon (float):                scalar by which the advective terms in the momentum equations are multiplied; if set to zero, advective terms are skipped;     
                                                     if set to one, advective terms are fully included;
@@ -105,6 +106,7 @@ def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, v
             'bed_bc': bed_bc,
             'surface_in_sigma': surface_in_sigma,
             'veddy_viscosity_assumption': veddy_viscosity_assumption,
+            'horizontal_diffusion': horizontal_diffusion,
             'density': density,
             'advection_epsilon': advection_epsilon,
             'advection_influence_matrix': advection_influence_matrix, # the validity of this matrix is checked when imax is know, i.e. when the hydrodynamics object is initialised
@@ -217,16 +219,30 @@ class Hydrodynamics(object):
     # Private methods
 
     def _setup_fem_space(self):
-        U = ngsolve.H1(self.mesh, order=self.order) 
-        G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
+        if self.model_options['horizontal_diffusion']: # These boundary conditions assume a rectangular estuary with seaward boundary at x=0 and river boundary at x=L
+            U = ngsolve.H1(self.mesh, order=self.order, dirichlet=f"{BOUNDARY_DICT[RIVER]}") 
+            V = ngsolve.H1(self.mesh, order=self.order, dirichlet=f"{BOUNDARY_DICT[WALLUP]}|{BOUNDARY_DICT[WALLDOWN]}")
+            Z = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
+            
+            list_of_spaces = [U for _ in range(self.M*(2*self.imax + 1))]
+            for _ in range(self.M*(2*self.imax + 1)):
+                list_of_spaces.append(V)
+            for _ in range(2*self.imax + 1):
+                list_of_spaces.append(Z)
 
-        list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
-        for _ in range(2*self.imax+1):
-            list_of_spaces.append(G)
+            X = ngsolve.FESpace(list_of_spaces)
+            self.femspace = X
+        else:
+            U = ngsolve.H1(self.mesh, order=self.order) 
+            G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
 
-        X = ngsolve.FESpace(list_of_spaces) # tensor product of all spaces
-        self.femspace = X
-        # self.Idmat = IdentityMatrix(X.ndof, complex=False) # save identity matrix for use later when computing condition numbers
+            list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
+            for _ in range(2*self.imax+1):
+                list_of_spaces.append(G)
+
+            X = ngsolve.FESpace(list_of_spaces) # tensor product of all spaces
+            self.femspace = X
+
         
 
 
@@ -542,9 +558,12 @@ class Hydrodynamics(object):
 
 
 
-    def set_constant_physical_parameters(self, Av=None, sigma=None, T=None, g=None, f=None):
+    def set_constant_physical_parameters(self, Av=None, Ah=None, sigma=None, T=None, g=None, f=None):
         if Av is not None:
-            self.constant_physical_parameters['Av'] = Av # You should only set this if you have assumed Av to be constant
+            self.constant_physical_parameters['Av'] = Av # vertical eddy viscosity or vertical eddy viscosity scale if it's assumed to scale linearly with local depth
+
+        if Ah is not None:
+            self.constant_physical_parameters['Ah'] = Ah # horizontal eddy viscosity; is unused if horizontal_diffusion = False in self.model_options
 
         if sigma is not None:
             self.constant_physical_parameters['sigma'] = sigma # M2-Frequency

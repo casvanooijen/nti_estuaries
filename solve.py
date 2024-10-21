@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import spsolve, eigs, qmr, gmres
+from scipy.sparse.linalg import spsolve, eigs, qmr, gmres, bicgstab
 import timeit
 import ngsolve
 import copy
@@ -13,7 +13,8 @@ import define_weak_forms as weakforms
 
 
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
-          continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm'):
+          continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm',
+          preconditioner = None):
 
     """
     
@@ -25,9 +26,10 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - hydro (Hydrodynamics):            object containing the (weak) model equations and options;
         - max_iterations (int):             maximum number of Newton iterations per continuation step;
         - tolerance (float):                if the stopping criterion is less than this value, the Newton method terminates and the procedure moves to the next continuation step;
-        - linear_solver:                    choice of linear solver; options: 'pardiso', 'scipy_direct', ...
+        - linear_solver:                    choice of linear solver; options: 'pardiso', 'scipy_direct', 'bicgstab'
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
         - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
+        - preconditioner:                   choice of preconditioner for an iterative method; options: None, 'Jacobi', 'Gauss-Seidel', 'reduced_basis', ...
     
     """
 
@@ -44,11 +46,16 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
     # Set initial guess
     sol = ngsolve.GridFunction(hydro.femspace)
+        # tidal waterlevel
     sol.components[2*(hydro.M)*(2*hydro.imax+1)].Set(hydro.seaward_forcing.boundaryCFdict[0], ngsolve.BND)
     for q in range(1, hydro.imax + 1):
         sol.components[2*(hydro.M)*(2*hydro.imax+1) + q].Set(hydro.seaward_forcing.boundaryCFdict[-q], ngsolve.BND)
         sol.components[2*(hydro.M)*(2*hydro.imax+1) + hydro.imax + q].Set(hydro.seaward_forcing.boundaryCFdict[q], ngsolve.BND)
-
+        # river discharge
+    if hydro.model_options['horizontal_diffusion']:
+        for m in range(hydro.M):
+            sol.components[m * (2*hydro.imax + 1)].Set(hydro.riverine_forcing.normal_alpha_boundaryCF[m][0], ngsolve.BND)
+            
     hydro.solution_gf = sol
     
 
@@ -124,6 +131,35 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
 
                 sol = spsolve(mat, rhs_arr)
+                du.vec.FV().NumPy()[freedof_list] = sol
+            elif linear_solver == 'bicgstab':
+                freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
+                mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
+                rhs_arr = rhs.FV().NumPy()[freedof_list]
+
+
+                # construct preconditioner
+
+
+                if preconditioner == 'Jacobi': # diagonal scaling preconditioner
+                    diagonal_entries = mat.diagonal()
+                    diagonal_entries_nonzero = np.where(diagonal_entries == 0, np.ones_like(diagonal_entries), diagonal_entries)
+                    print(f'    Condition number is {np.linalg.cond(mat.todense())}')
+                    prec = sp.diags(np.power(diagonal_entries_nonzero, -1))
+                    print(f'    Preconditioned condition number is {np.linalg.cond(mat.todense() @ prec)}')
+                
+                # plt.imshow(mat.todense(), cmap='RdBu')
+
+                plt.spy(mat.todense())
+                if preconditioner is not None:
+                    sol, exitcode = bicgstab(mat, rhs_arr, maxiter=500, M=prec)
+                else:
+                    sol, exitcode = bicgstab(mat, rhs_arr, maxiter=500)
+
+
+                if exitcode != 0:
+                    print('    BiCG-STAB did not converge in 500 iterations')
+
                 du.vec.FV().NumPy()[freedof_list] = sol
             else:
                 raise ValueError(f"Linear solver '{linear_solver}' not known to the system.")

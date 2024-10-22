@@ -127,19 +127,22 @@ class PostProcessing(object):
         Hx = hydro.spatial_physical_parameters['H'].gradient_cf[0]
         Hy = hydro.spatial_physical_parameters['H'].gradient_cf[1]
 
+        x_scaling = hydro.model_options['x_scaling']
+        y_scaling = hydro.model_options['y_scaling']
+
         F = dict()
-        F[0] = [H * (ngsolve.grad(hydro.alpha_solution[m][0])[0] + ngsolve.grad(hydro.beta_solution[m][0])[1]) + \
-                  hydro.alpha_solution[m][0] * Hx + hydro.beta_solution[m][0] * Hy for m in range(hydro.M)]
+        F[0] = [H * (ngsolve.grad(hydro.alpha_solution[m][0])[0] / x_scaling + ngsolve.grad(hydro.beta_solution[m][0])[1] / y_scaling) + \
+                  hydro.alpha_solution[m][0] * Hx / x_scaling + hydro.beta_solution[m][0] * Hy / y_scaling for m in range(hydro.M)]
         for q in range(1, hydro.imax + 1):
-            F[-q] = [H * (ngsolve.grad(hydro.alpha_solution[m][-q])[0] + ngsolve.grad(hydro.beta_solution[m][-q])[1]) + \
-                        hydro.alpha_solution[m][-q] * Hx + hydro.beta_solution[m][-q] * Hy for m in range(hydro.M)]
-            F[q] = [H * (ngsolve.grad(hydro.alpha_solution[m][q])[0] + ngsolve.grad(hydro.beta_solution[m][q])[1]) + \
-                        hydro.alpha_solution[m][q] * Hx + hydro.beta_solution[m][q] * Hy for m in range(hydro.M)]
+            F[-q] = [H * (ngsolve.grad(hydro.alpha_solution[m][-q])[0] / x_scaling + ngsolve.grad(hydro.beta_solution[m][-q])[1] / y_scaling) + \
+                        hydro.alpha_solution[m][-q] * Hx / x_scaling + hydro.beta_solution[m][-q] * Hy / y_scaling for m in range(hydro.M)]
+            F[q] = [H * (ngsolve.grad(hydro.alpha_solution[m][q])[0] / x_scaling + ngsolve.grad(hydro.beta_solution[m][q])[1] / y_scaling) + \
+                        hydro.alpha_solution[m][q] * Hx / x_scaling + hydro.beta_solution[m][q] * Hy / y_scaling for m in range(hydro.M)]
             
         self.w = lambda q, sigma : -sum([1/((m+0.5)*np.pi) * F[q][m] * (np.sin((m+0.5)*np.pi*sigma) + minusonepower(m) * np.ones_like(sigma)) for m in range(hydro.M)]) + \
-                                   sigma * self.u(q, sigma) * Hx + sigma * self.v(q, sigma) * Hy
+                                   sigma * self.u(q, sigma) * Hx / x_scaling + sigma * self.v(q, sigma) * Hy / y_scaling
         self.w_timed = lambda t, sigma : sum([-sum([1/((m+0.5)*np.pi) * F[q][m] * (np.sin((m+0.5)*np.pi*sigma) + minusonepower(m) * np.ones_like(sigma)) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax)]) + \
-                                         sigma * self.u_timed(t, sigma) * Hx + sigma * self.v_timed(t, sigma) * Hy
+                                         sigma * self.u_timed(t, sigma) * Hx / x_scaling + sigma * self.v_timed(t, sigma) * Hy / y_scaling
 
 
         self.u_abs = lambda q, sigma : ngsolve.sqrt(self.u(q,sigma)*self.u(q,sigma)) if q == 0 else ngsolve.sqrt(self.u(q,sigma)*self.u(q,sigma)+self.u(-q,sigma)*self.u(-q,sigma)) 

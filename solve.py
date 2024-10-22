@@ -322,3 +322,78 @@ def get_condition_number(mat, maxits = 100, tol=1e-9):
     return large_eig / small_eig
 
 # Linear solvers
+
+
+def bicgstab(A, f, u0, tol=1e-12, maxits = 500, reduced_A=None, transition_mass_matrix=None):
+    """Carries out a Bi-CGSTAB solver based on the pseudocode in Van der Vorst (1992). This function has the option for a
+    reduced basis preconditioner if reduced_A and transition_mass_matrix are specified. Returns the solution and an exitcode
+    indicating how many iterations it took for convergence. If exitcode=0 is returned, then the method did not converge.
+    This implementation is heavily based on the scipy-implementation that can be found on https://github.com/scipy/scipy/blob/main/scipy/sparse/linalg/_isolve/iterative.py.
+    The function is also included in this file, so that the reduced-basis preconditioner can be used.
+    
+    Arguments:
+    
+    - A:                        system matrix;
+    - f:                        right-hand side;
+    - u0:                       initial guess;
+    - tol:                      tolerance for stopping criterion;
+    - reduced_A:                reduced basis-version of the system matrix. If this is an ngsolve.BaseMatrix, solves using this matrix are performed with PARDISO; otherwise with sp.spsolve (UMFPACK)
+    - transition_mass_matrix:   matrix specifying how coefficient vectors of the full basis transfer to coefficient vectors of the reduced basis;    
+    
+    """
+    # initialising parameters
+    r = f - A @ u0
+    shadow_r0 = np.copy(r)
+
+    previous_rho = 1
+    alpha = 1
+    omega = 1
+
+    v = np.zeros_like(u0)
+    p = np.zeros_like(u0)
+
+    solution = u0[:]
+    f_norm = np.linalg.norm(f, 2) # precompute this so this need not happen every iteration
+
+    for i in range(maxits):
+        rho = np.inner(shadow_r0, r)
+
+        beta = (rho / previous_rho) * (alpha / omega)
+
+        p -= omega * v
+        p *= beta
+        p += r
+
+        preconditioned_p = np.copy(p) # Add reduced-basis preconditioner!
+        v = A @ preconditioned_p
+        alpha = rho / np.inner(shadow_r0, v)
+        s = r - alpha * v
+
+        z = np.copy(s) # Add reduced-basis preconditioner!
+        t = A @ z
+        omega = np.inner(t, s) / np.inner(t, t)
+
+        solution += alpha * p + omega * z
+        r = s - omega * t
+        
+        if np.linalg.norm(r, 2) / f_norm < tol:
+            return solution, i+1 # return the solution and how many iterations it took for convergence
+
+        previous_rho = np.copy(rho)
+
+    return solution, 0 # return the solution after the final iteration, but with a 0 indicating non-convergence
+
+
+
+if __name__ == '__main__':
+    N = 100
+    diag1 = 2 * np.ones(N)
+    diag2 = -1 * np.ones(N-1)
+    A = sp.diags([diag1, diag2, diag2], [0,1,-1])
+    rhs = np.ones(N)
+    sol, num_its = bicgstab(A, rhs, np.ones_like(rhs), tol=1e-12)
+    spsol, code = sp.linalg.bicgstab(A, rhs, x0=np.ones_like(rhs), maxiter=500, rtol=1e-12)
+
+    print(sol)
+    print(f"Computing solutions took {num_its} iterations. If 0, then Bi-CGSTAB did not converge")
+    print('Scipy-solution is', spsol, 'Code is', code)

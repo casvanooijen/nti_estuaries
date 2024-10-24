@@ -125,7 +125,7 @@ def evaluate_CF_range(cf, mesh, x, y):
     """
     return cf(mesh(x, y)).flatten()
 
-def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridfunction', **kwargs):
+def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridfunction', save=None, **kwargs):
     """
     Plots a simple colormap of a Coefficient function on a refined display mesh.
 
@@ -136,6 +136,7 @@ def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridf
         - refinement_level:     how many times the mesh is refined to get a display mesh on which the function is evaluated;
         - show_mesh:            if True, overlays the colormap with the mesh;
         - title:                title of the plot;
+        - save:                 saves the figure to f'{save}.png',
         - **kwargs:             keyword arguments for matplotlib.pyplot.tripcolor
     
     """
@@ -151,6 +152,8 @@ def plot_CF_colormap(cf, mesh, refinement_level=1, show_mesh=False, title='Gridf
 
     ax.set_title(title)
     cbar = fig.colorbar(colormesh)
+    if save is not None:
+        fig.savefig(f'{save}.png')
     # plt.show()
 
 

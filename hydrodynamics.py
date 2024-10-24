@@ -34,7 +34,7 @@ from ngsolve.solvers import *
 # import pypardiso
 
 import TruncationBasis
-from geometry.create_geometry import RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
+from geometry.create_geometry import parametric_geometry, RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
 from boundary_fitted_coordinates import generate_bfc
 from spatial_parameter import SpatialParameter
 
@@ -159,7 +159,8 @@ class Hydrodynamics(object):
     """
 
     def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int, 
-                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis):
+                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis,
+                 boundary_partition_dict=None, boundary_maxh_dict=None, geometrycurves=None, maxh_global=None):
         
         self.mesh = mesh
         self.model_options = model_options
@@ -171,6 +172,20 @@ class Hydrodynamics(object):
         self.vertical_basis = vertical_basis
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
+
+        self.geometrycurves = geometrycurves
+        self.maxh = maxh_global
+
+        if boundary_partition_dict is None:
+            self.boundary_partition_dict = {RIVER:[0,1],SEA:[0,1],WALLUP:[0,1],WALLDOWN:[0,1]}
+        else:
+            self.boundary_partition_dict = boundary_partition_dict
+
+        if boundary_maxh_dict is None:
+            self.boundary_maxh_dict = {RIVER:[self.maxh], SEA:[self.maxh], WALLUP: [self.maxh], WALLDOWN: [self.maxh]}
+        else:
+            self.boundary_maxh_dict = boundary_maxh_dict
+        
         
         self.loaded_from_files = False # flag that indicates whether the object is loaded from a saved solution; if it is, the spatial parameters are stored differently
         if self.vertical_basis is TruncationBasis.eigbasis_constantAv: # not so pretty but it works
@@ -452,9 +467,9 @@ class Hydrodynamics(object):
 
         options['advection_influence_matrix'] = options['advection_influence_matrix'].tolist()
 
-        f_options = open(f"{name}/options.json", 'x')
-        json.dump(options, f_options, indent=4)
-        f_options.close()
+        with open(f"{name}/options.json", 'x') as f_options:
+            json.dump(options, f_options, indent=4)
+
 
         # options_string = f"bed_bc:{self.model_options['bed_bc']}\nleading_order_surface:{self.model_options['leading_order_surface']}\n"+\
         #                  f"veddy_viscosity_assumption:{self.model_options['veddy_viscosity_assumption']}\ndensity:{self.model_options['density']}\n"+\
@@ -466,12 +481,23 @@ class Hydrodynamics(object):
 
         # constant parameters
 
-        params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax}
+        params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax, 'maxh': self.maxh}
         params.update(self.constant_physical_parameters)
 
-        f_params = open(f"{name}/params.json", 'x')
-        json.dump(params, f_params, indent=4)
-        f_params.close()
+        with open(f"{name}/params.json", 'x') as f_params:
+            json.dump(params, f_params, indent=4)
+
+        # geometrycurves and partition/maxh dictionaries
+
+        with open(f"{name}/boundary_partition_dict.json", 'x') as f_partdict:
+            json.dump(self.boundary_partition_dict, f_partdict)
+
+        with open(f"{name}/boundary_maxh_dict.json", 'x') as f_maxhdict:
+            json.dump(self.boundary_maxh_dict, f_maxhdict)
+
+        with open(f'{name}/geometrycurves.pkl', 'wb') as f_geomcurves:
+            dill.dump(self.geometrycurves, f_geomcurves)
+
 
         # params_string = f"sem_order:{self.order}\nM:{self.M}\nimax:{self.imax}"
         # for name, value in self.constant_physical_parameters.items():
@@ -485,11 +511,14 @@ class Hydrodynamics(object):
 
         # self.mesh.ngmesh.Save(f'{name}/mesh.vol') # save the netgen mesh
         
-        with open(f"{name}/mesh.pkl", 'wb') as file:
-            pickle.dump(self.mesh, file)
+        # with open(f"{name}/mesh.pkl", 'wb') as file:
+        #     pickle.dump(self.mesh, file)
 
-        with open(f"{name}/fespace.pkl", 'wb') as file:
-            pickle.dump(self.femspace, file)
+
+        # with open(f"{name}/fespace.pkl", 'wb') as file:
+        #     pickle.dump(self.femspace, file)
+
+
 
         # spatial parameters
 
@@ -507,9 +536,9 @@ class Hydrodynamics(object):
 
         # solution
 
-        # mesh_functions.save_gridfunction(self.solution_gf, f"{name}/solution", **kwargs)
-        with open(f'{name}/solution.pkl', 'wb') as file:
-            dill.dump(self.solution_gf, file)
+        mesh_functions.save_gridfunction(self.solution_gf, f"{name}/solution", **kwargs)
+        # with open(f'{name}/solution.pkl', 'wb') as file:
+        #     dill.dump(self.solution_gf, file)
 
 
 
@@ -593,6 +622,188 @@ class Hydrodynamics(object):
 
     def set_riverine_boundary_condition(self, discharge_amplitude_list, discharge_phase_list, **kwargs):
         self.riverine_forcing = RiverineForcing(self, discharge_amplitude_list, discharge_phase_list, **kwargs)
+
+
+    # Classification in terms of elliptic, hyperbolic, or parabolic (or neither)
+
+    def construct_classification_matrices(self, x, y):
+        """Rewrites the model equations as a first order system of PDEs and constructs the matrices in front of the x-derivative and in front of the y-derivative at a specific point.
+        The ordering of the unknowns is as follows:
+
+        gamma_0, gamma_(-1), gamma(1), gamma(-2), gamma(2), ...,
+        alpha_(0,0), alpha_(1,0), ..., alpha(0,-1), alpha(1,-1), ..., alpha(0,1), alpha(1,1), ..., alpha(0,-2), alpha(1,-2), ..., alpha(0,2), alpha(1,2), ...
+        beta_(0,0), beta_(1,0), ..., beta(0,-1), beta(1,-1), ..., beta(0,1), beta(1,1), ..., beta(0,-2), beta(1,-2), ..., beta(0,2), beta(1,2), ...
+        d/dx (alpha_(0,0), alpha_(1,0), ..., alpha(0,-1), alpha(1,-1), ..., alpha(0,1), alpha(1,1), ..., alpha(0,-2), alpha(1,-2), ..., alpha(0,2), alpha(1,2), ...)
+        d/dx (beta_(0,0), beta_(1,0), ..., beta(0,-1), beta(1,-1), ..., beta(0,1), beta(1,1), ..., beta(0,-2), beta(1,-2), ..., beta(0,2), beta(1,2), ...)
+        d/dy (alpha_(0,0), alpha_(1,0), ..., alpha(0,-1), alpha(1,-1), ..., alpha(0,1), alpha(1,1), ..., alpha(0,-2), alpha(1,-2), ..., alpha(0,2), alpha(1,2), ...)
+        d/dy (beta_(0,0), beta_(1,0), ..., beta(0,-1), beta(1,-1), ..., beta(0,1), beta(1,1), ..., beta(0,-2), beta(1,-2), ..., beta(0,2), beta(1,2), ...).
+
+        Arguments:
+
+        - x (float):            x-value at which matrices should be computed
+        - y (float):            y-value at which matrices should be computed
+        """
+
+        num_unknowns = 2*self.imax+1 + 6*self.M*(2*self.imax+1)
+        Ax = np.zeros((num_unknowns, num_unknowns)) # x-derivative system matrix
+        Ay = np.zeros((num_unknowns, num_unknowns)) # y-derivative system matrix
+        
+        L = self.model_options['x_scaling']
+        B = self.model_options['y_scaling']
+
+        H = mesh_functions.evaluate_CF_point(self.spatial_physical_parameters['H'].cf, self.mesh, x, y)
+        R =  mesh_functions.evaluate_CF_point(self.spatial_physical_parameters['R'].cf, self.mesh, x, y)
+        g = self.constant_physical_parameters['g']
+
+        G4 = self.vertical_basis.tensor_dict['G4']
+
+        # The index of gamma_0 is 0, the index of gamma_(-|i|) is 2*abs(i)-1, the index of gamma_(|i|) is 2*i
+        # The index of alpha_(m,0) is 2*imax+1 + m, the index of alpha_(m,-|i|) is 2*imax+1 + M*(2i-1) + m, the index of alpha_(m,|i|) is 2*imax+1 + M*(2i) + m
+        # The index of beta_(m,0) is 2*imax+1 + M*(2imax+1) + m, the index of beta_(m,-|i|) is 2*imax+1 + M*(2imax+1) + M*(2i-1) + m, the index of beta_(m,|i|) is 2*imax+1 + M*(2imax+1) + M*(2i) + m
+        # The index of d/dx alpha_(m,0) is 2*imax+1 + 2*M*(2imax+1) + m, the index of d/dx alpha_(m,-|i|) is 2*imax+1 + 2*M*(2imax+1) + M*(2i-1) + m, the index of d/dx alpha_(m,|i|) is 2*imax+1 + 2*M*(2imax+1) + M*(2i) + m
+        # The index of d/dx beta_(m,0) is 2*imax+1 + 3*M*(2imax+1) + m, the index of d/dx beta_(m,-|i|) is 2*imax+1 + 3*M*(2imax+1) + M*(2i-1) + m, the index of d/dx beta_(m,|i|) is 2*imax+1 + 3*M*(2imax+1) + M*(2i) + m
+        # The index of d/dy alpha_(m,0) is 2*imax+1 + 4*M*(2imax+1) + m, the index of d/dy alpha_(m,-|i|) is 2*imax+1 + 4*M*(2imax+1) + M*(2i-1) + m, the index of d/dy alpha_(m,|i|) is 2*imax+1 + 4*M*(2imax+1) + M*(2i) + m
+        # The index of d/dy beta_(m,0) is 2*imax+1 + 5*M*(2imax+1) + m, the index of d/dy beta_(m,-|i|) is 2*imax+1 + 5*M*(2imax+1) + M*(2i-1) + m, the index of d/dy beta_(m,|i|) is 2*imax+1 + 5*M*(2imax+1) + M*(2i) + m
+
+        # depth-integrated continuity equation (derivatives w.r.t. x and y are considered to be derivatives here; otherwise the matrices are always singular)
+        for m in range(self.M):
+            Ax[0, 2*self.imax + 1 + m] = 0.5 * G4(m) / L * (H+R)
+            Ay[0, 2*self.imax + 1 + self.M * (2*self.imax + 1) + m] = 0.5 * G4(m) / B * (H+R)
+            for i in range(1, self.imax+1):
+                Ax[2*i-1, 2*self.imax + 1 + self.M*(2*i-1) + m] = 0.5 * G4(m) / L * (H+R)
+                Ay[2*i-1, 2*self.imax + 1 + self.M * (2*self.imax + 1) + self.M*(2*i-1) + m] = 0.5 * G4(m) / B * (H+R)
+
+                Ax[2*i, 2*self.imax + 1 + self.M*(2*i) + m] = 0.5 * G4(m) / L * (H+R)
+                Ay[2*i, 2*self.imax + 1 + self.M * (2*self.imax + 1) + self.M*(2*i) + m] = 0.5 * G4(m) / B * (H+R)
+
+
+        # u-momentum equation
+
+        for m in range(self.M):
+            # residual component
+            Ax[2*self.imax + 1 + m, 2*self.imax+1 + 2*self.M*(2*self.imax+1) + m] = -0.25 / (L**2) * (H+R)
+            Ay[2*self.imax + 1 + m, 2*self.imax+1 + 4*self.M*(2*self.imax+1) + m] = -0.25 / (B**2) * (H+R)
+            Ax[2*self.imax + 1 + m, 0] = 0.5 * g * G4(m) / L
+            for i in range(1, self.imax+1):
+                # -i-component
+                Ax[2*self.imax + 1 + self.M*(2*i-1) + m, 2*self.imax+1 + 2*self.M*(2*self.imax+1) + self.M*(2*i-1) + m] = -0.25 / (L**2) * (H+R)
+                Ay[2*self.imax + 1 + self.M*(2*i-1) + m, 2*self.imax+1 + 4*self.M*(2*self.imax+1) + self.M*(2*i-1) + m] = -0.25 / (B**2) * (H+R)
+                Ax[2*self.imax + 1 + self.M*(2*i-1) + m, 2*i - 1] = 0.5 * g * G4(m) / L
+                # +i-component
+                Ax[2*self.imax + 1 + self.M*(2*i) + m, 2*self.imax+1 + 2*self.M*(2*self.imax+1) + self.M*(2*i) + m] = -0.25 / (L**2) * (H+R)
+                Ay[2*self.imax + 1 + self.M*(2*i) + m, 2*self.imax+1 + 4*self.M*(2*self.imax+1) + self.M*(2*i) + m] = -0.25 / (B**2) * (H+R)
+                Ax[2*self.imax + 1 + self.M*(2*i) + m, 2*i] = 0.5 * g * G4(m) / L
+
+        # v-momentum equation
+
+        for m in range(self.M):
+            # residual component
+            Ax[2*self.imax + 1 + self.M*(2*self.imax+1) + m, 2*self.imax+1 + 3*self.M*(2*self.imax+1) + m] = -0.25 / (L**2) * (H+R)
+            Ay[2*self.imax + 1 + self.M*(2*self.imax+1) + m, 2*self.imax+1 + 5*self.M*(2*self.imax+1) + m] = -0.25 / (B**2) * (H+R)
+            Ay[2*self.imax + 1 + self.M*(2*self.imax+1) + m, 0] = 0.5 * g * G4(m) / B
+            for i in range(1, self.imax+1):
+                # -i-component
+                Ax[2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*self.imax+1 + 3*self.M*(2*self.imax+1) + self.M*(2*i-1) + m] = -0.25 / (L**2) * (H+R)
+                Ay[2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*self.imax+1 + 5*self.M*(2*self.imax+1) + self.M*(2*i-1) + m] = -0.25 / (B**2) * (H+R)
+                Ay[2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*i - 1] = 0.5 * g * G4(m) / B
+                # +i-component
+                Ax[2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*self.imax+1 + 3*self.M*(2*self.imax+1) + self.M*(2*i) + m] = -0.25 / (L**2) * (H+R)
+                Ay[2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*self.imax+1 + 5*self.M*(2*self.imax+1) + self.M*(2*i) + m] = -0.25 / (B**2) * (H+R)
+                Ay[2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*i] = 0.5 * g * G4(m) / B
+
+        # compatibility of alpha and d/dx alpha
+
+        for m in range(self.M):
+            # residual component
+            Ax[2*self.imax + 1 + 2*self.M*(2*self.imax+1) + m, 2*self.imax + 1 + m] = 1
+            for i in range(1, self.imax+1):
+                # -i-component
+                Ax[2*self.imax + 1 + 2*self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*self.imax + 1 + self.M*(2*i-1) + m] = 1
+                # +i-component
+                Ax[2*self.imax + 1 + 2*self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*self.imax + 1 + self.M*(2*i) + m] = 1
+
+        # compatibility of beta and d/dx beta
+
+        for m in range(self.M):
+            # residual component
+            Ax[2*self.imax + 1 + 3*self.M*(2*self.imax+1) + m, 2*self.imax + 1 + self.M*(2*self.imax+1) + m] = 1
+            for i in range(1, self.imax+1):
+                # -i-component
+                Ax[2*self.imax + 1 + 3*self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i-1) + m] = 1
+                # +i-component
+                Ax[2*self.imax + 1 + 3*self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i) + m] = 1
+
+        # compatibility of alpha and d/dy alpha
+
+        for m in range(self.M):
+            # residual component
+            Ay[2*self.imax + 1 + 4*self.M*(2*self.imax+1) + m, 2*self.imax + 1 + m] = 1
+            for i in range(1, self.imax+1):
+                # -i-component
+                Ay[2*self.imax + 1 + 4*self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*self.imax + 1 + self.M*(2*i-1) + m] = 1
+                # +i-component
+                Ay[2*self.imax + 1 + 4*self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*self.imax + 1 + self.M*(2*i) + m] = 1
+
+        # compatibility of beta and d/dy beta
+
+        for m in range(self.M):
+            # residual component
+            Ay[2*self.imax + 1 + 5*self.M*(2*self.imax+1) + m, 2*self.imax + 1 + self.M*(2*self.imax+1) + m] = 1
+            for i in range(1, self.imax+1):
+                # -i-component
+                Ay[2*self.imax + 1 + 5*self.M*(2*self.imax+1) + self.M*(2*i-1) + m, 2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i-1) + m] = 1
+                # +i-component
+                Ay[2*self.imax + 1 + 5*self.M*(2*self.imax+1) + self.M*(2*i) + m, 2*self.imax + 1 + self.M*(2*self.imax+1) + self.M*(2*i) + m] = 1
+
+        return Ax, Ay
+    
+
+    def classify(self, x, y, zero_tolerance=1e-8):
+        """Returns 'hyperbolic', 'parabolic', 'elliptic', 'untraditional' depending on the eigenvalues and eigenvectors of Ay^(-1)Ax
+        
+        Arguments:
+
+        - x (float):                    x-value,
+        - y (float):                    y-value,
+        - zero_tolerance (float):       tolerance where a number is considered to be equal to zero
+        
+        """
+
+        Ax, Ay = self.construct_classification_matrices(x, y)
+        try:
+            Ay_inv = np.linalg.inv(Ay)
+            eigvals, eigvecs = np.linalg.eig(Ay_inv @ Ax)
+        except np.linalg.LinAlgError:
+            Ax_inv = np.linalg.inv(Ax)
+            eigvals, eigvecs = np.linalg.eig(Ax_inv @ Ay)
+
+        if eigvals.dtype == complex:
+            if np.all(np.imag(eigvals) > zero_tolerance * np.real(eigvals)): # if the imaginary part is at least zero_tolerance times the real part, it is considered non-zero
+                return 'elliptic'
+            else: # if for at least one eigenvalue, the imaginary part is zero (considered to be zero_tolerance times the real part to incorporate rounding errors)
+                return 'untraditional'
+        elif eigvals.dtype == float:
+            sorted_eigvals = np.sort(eigvals)
+            differences = sorted_eigvals[1:] - sorted_eigvals[:-1]
+            if np.all(differences > zero_tolerance * sorted_eigvals[1:]): # if the differences are at least zero_tolerance times the eigenvalues themselves, they are considered to be all distinct and the system is hyperbolic
+                return 'hyperbolic'
+            else:
+                if np.linalg.matrix_rank(eigvecs) == eigvecs.shape[0]: # if the geometric multiplicity of the matrix of eigenvectors matches the algebraic multiplicities, the system is still hyperbolic
+                    return 'hyperbolic'
+                else:
+                    return 'parabolic'
+        else:
+            raise ValueError(f"Unrecognised eigenvalue datatype {eigvals.dtype}.")
+        
+    
+
+
+        
+
+
+
+
+
         
 
 def load_hydrodynamics(name, **kwargs):
@@ -631,6 +842,7 @@ def load_hydrodynamics(name, **kwargs):
     sem_order = params.pop('sem_order')
     M = params.pop('M')
     imax = params.pop('imax')
+    maxh = params.pop('maxh')
     f_params.close()
     # the remainder of this dict constitutes the constant physical parameters of the simulation
     if scaling:
@@ -642,8 +854,20 @@ def load_hydrodynamics(name, **kwargs):
 
     # mesh = ngsolve.Mesh(f'{name}/mesh.vol')
 
-    with open(f'{name}/mesh.pkl', 'rb') as file:
-        mesh = dill.load(file)
+    # with open(f'{name}/mesh.pkl', 'rb') as file:
+    #     mesh = dill.load(file)
+
+    with open(f'{name}/geometrycurves.pkl', 'rb') as f_geomcurves:
+        geometrycurves = dill.load(f_geomcurves)
+
+    with open(f'{name}/boundary_partition_dict.json', 'rb') as f_partdict:
+        boundary_partition_dict = json.load(f_partdict)
+
+    with open(f'{name}/boundary_maxh_dict.json', 'rb') as f_maxhdict:
+        boundary_maxhdict = json.load(f_maxhdict)
+
+    geometry = parametric_geometry(geometrycurves, boundary_partition_dict, boundary_maxhdict)
+    mesh = ngsolve.Mesh(geometry.GenerateMesh(maxh=maxh))
 
     bfc = generate_bfc(mesh, order=sem_order, method='diffusion', alpha=1)
 
@@ -676,11 +900,11 @@ def load_hydrodynamics(name, **kwargs):
 
     # add solution
 
-    with open(f'{name}/solution.pkl', 'rb') as file:
-        hydro.solution_gf = dill.load(file)
+    # with open(f'{name}/solution.pkl', 'rb') as file:
+    #     hydro.solution_gf = dill.load(file)
 
-    # hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
-    # mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{name}/solution.npy', **kwargs)
+    hydro.solution_gf = ngsolve.GridFunction(hydro.femspace)
+    mesh_functions.load_basevector(hydro.solution_gf.vec.data, f'{name}/solution.npy', **kwargs)
 
     hydro.restructure_solution()
 

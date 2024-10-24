@@ -7,6 +7,7 @@ import copy
 
 from hydrodynamics import *
 import define_weak_forms as weakforms
+from mesh_functions import plot_CF_colormap
 
 
 # Main function
@@ -14,7 +15,7 @@ import define_weak_forms as weakforms
 
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
           continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm',
-          preconditioner = None):
+          preconditioner = None, plot_intermediate_results='none'):
 
     """
     
@@ -29,7 +30,8 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - linear_solver:                    choice of linear solver; options: 'pardiso', 'scipy_direct', 'bicgstab'
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
         - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
-        - preconditioner:                   choice of preconditioner for an iterative method; options: None, 'Jacobi', 'Gauss-Seidel', 'reduced_basis', ...
+        - preconditioner:                   choice of preconditioner for an iterative method; options: None, 'Jacobi', 'Gauss-Seidel', 'reduced_basis', ...,
+        - plot_intermediate_results:        indicates whether intermediate results should be plotted and saved; options: 'none' (default) and 'all'.
     
     """
 
@@ -117,6 +119,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
                 mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
                 rhs_arr = rhs.FV().NumPy()[freedof_list]
+                plt.imshow(np.absolute(mat.todense()), cmap='viridis')
 
                 # if newton_counter > 0:
                 #     eigs, _ = np.linalg.eig(mat.todense())
@@ -187,6 +190,27 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 raise ValueError(f"Stopping criterion '{stopcriterion}' not known to the system.")
 
             print(f"    Stopping criterion value is {stopcriterion_value}\n")
+
+            if plot_intermediate_results == 'all':
+                # plotting to test where convergence goes wrong
+                for m in range(hydro.M):
+                    for i in range(-hydro.imax, hydro.imax+1):
+                        plot_CF_colormap(hydro.alpha_solution[m][i], hydro.mesh, refinement_level=3, show_mesh=True, title=f'alpha_({m},{i})', save = f"iteration{newton_counter}_alpha({m},{i})")
+                        plot_CF_colormap(ngsolve.grad(hydro.alpha_solution[m][i])[0], hydro.mesh, refinement_level=3, show_mesh=True, title=f'alphax_({m},{i})', save = f"iteration{newton_counter}_alphax({m},{i})")
+                        plot_CF_colormap(ngsolve.grad(hydro.alpha_solution[m][i])[1], hydro.mesh, refinement_level=3, show_mesh=True, title=f'alphay_({m},{i})', save = f"iteration{newton_counter}_alphay({m},{i})")
+                        plot_CF_colormap(hydro.beta_solution[m][i], hydro.mesh, refinement_level=3, show_mesh=True, title=f'beta_({m},{i})', save = f"iteration{newton_counter}_beta({m},{i})")
+                        plot_CF_colormap(ngsolve.grad(hydro.beta_solution[m][i])[0], hydro.mesh, refinement_level=3, show_mesh=True, title=f'betax_({m},{i})', save = f"iteration{newton_counter}_betax({m},{i})")
+                        plot_CF_colormap(ngsolve.grad(hydro.beta_solution[m][i])[1], hydro.mesh, refinement_level=3, show_mesh=True, title=f'betay_({m},{i})', save = f"iteration{newton_counter}_betay({m},{i})")
+
+                for i in range(-hydro.imax, hydro.imax):
+                    plot_CF_colormap(hydro.gamma_solution[i], hydro.mesh, refinement_level=3, show_mesh=True, title=f'gamma_({i})', save = f"iteration{newton_counter}_gamma({i})")
+                    u_DA = sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.alpha_solution[m][i] for m in range(hydro.M)])
+                    plot_CF_colormap(u_DA, hydro.mesh, refinement_level=3, show_mesh=True, title=f'u_DA_({i})', save = f"iteration{newton_counter}_uDA({i})")
+                    v_DA = sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.beta_solution[m][i] for m in range(hydro.M)])
+                    plot_CF_colormap(v_DA, hydro.mesh, refinement_level=3, show_mesh=True, title=f'v_DA_({i})', save = f"iteration{newton_counter}_vDA({i})")
+
+
+                plt.close(fig = 'all')
 
             if stopcriterion_value < tolerance:
                 print('Newton-Raphson method converged')
@@ -384,16 +408,72 @@ def bicgstab(A, f, u0, tol=1e-12, maxits = 500, reduced_A=None, transition_mass_
     return solution, 0 # return the solution after the final iteration, but with a 0 indicating non-convergence
 
 
+# Preconditioning
+
+def construct_mass_matrix(fespace: ngsolve.comp.FESpace):
+    u, v = fespace.TnT()
+    a = ngsolve.BilinearForm(fespace)
+    a += u * v * ngsolve.dx
+    a.Assemble()
+    return basematrix_to_csr_matrix(a.mat)
+
+
+def construct_transition_mass_matrix(full_fespace: ngsolve.comp.FESpace, reduced_fespace: ngsolve.comp.FESpace):
+    """Returns the transition mass matrix for transitioning from the full basis to a reduced basis.
+    
+    Arguments:
+    
+    - full_fespace:             finite element space for the full (larger) basis;
+    - reduced_fespace:          finite element space for the reduced basis;
+    """
+    
+    M = np.empty((reduced_fespace.ndof, full_fespace.ndof))
+
+    for k in range(reduced_fespace.ndof):
+        reduced_gf = ngsolve.GridFunction(reduced_fespace)
+        reduced_gf.vec[k] = 1
+        for n in range(full_fespace.ndof):
+            full_gf = ngsolve.GridFunction(full_fespace)
+            full_gf.vec[n] = 1
+            M[k, n] = ngsolve.Integrate(reduced_gf * full_gf, full_fespace.mesh)
+    return M
+
+
 
 if __name__ == '__main__':
-    N = 100
-    diag1 = 2 * np.ones(N)
-    diag2 = -1 * np.ones(N-1)
-    A = sp.diags([diag1, diag2, diag2], [0,1,-1])
-    rhs = np.ones(N)
-    sol, num_its = bicgstab(A, rhs, np.ones_like(rhs), tol=1e-12)
-    spsol, code = sp.linalg.bicgstab(A, rhs, x0=np.ones_like(rhs), maxiter=500, rtol=1e-12)
+    
+    from netgen.geom2d import unit_square
+    mesh = ngsolve.Mesh(unit_square.GenerateMesh(maxh=0.3))
+    reduced_mesh = ngsolve.Mesh(unit_square.GenerateMesh(maxh=0.4))
+    full_fespace = ngsolve.H1(mesh, order=3)
 
-    print(sol)
-    print(f"Computing solutions took {num_its} iterations. If 0, then Bi-CGSTAB did not converge")
-    print('Scipy-solution is', spsol, 'Code is', code)
+    cf = 8 * ngsolve.x * (1 - ngsolve.x) * ngsolve.y * (1 - ngsolve.y)
+
+    full_gf = ngsolve.GridFunction(full_fespace)
+    full_gf.Set(cf, ngsolve.VOL)
+
+    reduced_fespace = ngsolve.H1(reduced_mesh, order=2)
+
+    M = construct_transition_mass_matrix(full_fespace, reduced_fespace)
+    reduced_massmatrix = construct_mass_matrix(reduced_fespace)
+    reduced_gf = ngsolve.GridFunction(reduced_fespace)
+
+    reduced_gf.Set(cf)
+    print(reduced_gf.vec.FV().NumPy())
+
+    rhs_vector = np.empty(reduced_massmatrix.shape[0])
+    for i in range(reduced_fespace.ndof):
+        basisfunction = ngsolve.GridFunction(reduced_fespace)
+        basisfunction.vec[i] = 1
+        rhs_vector[i] = ngsolve.Integrate(cf * basisfunction, mesh)
+
+    reduced_arr_manual = sp.linalg.spsolve(reduced_massmatrix, rhs_vector)
+    print(reduced_arr_manual)
+    reduced_gf_manual = ngsolve.GridFunction(reduced_fespace)
+    reduced_gf_manual.vec.FV().NumPy()[:] = reduced_arr_manual
+
+    mesh_functions.plot_CF_colormap(reduced_gf, mesh, refinement_level=3, title='Ngsolve projection')
+    mesh_functions.plot_CF_colormap(reduced_gf_manual, mesh, refinement_level=3, title='Manual projection')
+    mesh_functions.plot_CF_colormap(cf, mesh, refinement_level=3, title='True')
+    mesh_functions.plot_CF_colormap(reduced_gf - reduced_gf_manual, mesh, refinement_level=3, title='Difference')
+    plt.show()

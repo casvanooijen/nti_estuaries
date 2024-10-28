@@ -149,9 +149,18 @@ class PostProcessing(object):
         self.v_abs = lambda q, sigma : ngsolve.sqrt(self.v(q,sigma)*self.v(q,sigma)) if q == 0 else ngsolve.sqrt(self.v(q,sigma)*self.v(q,sigma)+self.v(-q,sigma)*self.v(-q,sigma)) 
         self.w_abs = lambda q, sigma : ngsolve.sqrt(self.w(q,sigma)*self.w(q,sigma)) if q == 0 else ngsolve.sqrt(self.w(q,sigma)*self.w(q,sigma)+self.w(-q,sigma)*self.w(-q,sigma))
         self.gamma_abs = lambda q : ngsolve.sqrt(self.gamma(q)*self.gamma(q)) if q == 0 else ngsolve.sqrt(self.gamma(q)*self.gamma(q)+self.gamma(-q)*self.gamma(-q)) 
+
+        self.u_phase = lambda q, sigma: ngsolve.atan2(-self.u(-q, sigma), self.u(q, sigma))
+        self.v_phase = lambda q, sigma: ngsolve.atan2(-self.v(-q, sigma), self.v(q, sigma))
+        self.w_phase = lambda q, sigma: ngsolve.atan2(-self.w(-q, sigma), self.w(q, sigma))
+        self.gamma_phase = lambda q: ngsolve.atan2(-self.gamma(-q), self.gamma(q))
+
         
         self.u_DA_abs = lambda q: ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) if q == 0 else ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) + self.u_DA(-q)*self.u_DA(-q)))
         self.v_DA_abs = lambda q: ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) if q == 0 else ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) + self.v_DA(-q)*self.v_DA(-q)))
+
+        self.u_DA_phase = lambda q: ngsolve.atan2(-self.u_DA(-q), self.u_DA(q))
+        self.v_DA_phase = lambda q: ngsolve.atan2(-self.v_DA(-q), self.v_DA(q))
 
         # Get derivative gridfunctions
 
@@ -499,7 +508,6 @@ class PostProcessing(object):
         
 
 
-
     def plot_depth_averaged_residual_circulation(self, num_arrows: tuple, L, B, refinement_level=3):
         """Only works with rectangular domains of length L and width B; temporary solution"""
 
@@ -560,13 +568,13 @@ class PostProcessing(object):
 
         surface_phase_short = np.arctan2(surface_imag_short, surface_real_short)
 
-        flow_real = evaluate_CF_range(self.hydro.u_DA[constituent], self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
-        flow_imag = evaluate_CF_range(-self.hydro.u_DA[-constituent], self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
+        flow_real = evaluate_CF_range(self.u_DA(constituent), self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
+        flow_imag = evaluate_CF_range(-self.u_DA(-constituent), self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
         
         flow_phase = np.arctan2(flow_imag, flow_real)
 
-        flow_real_short = evaluate_CF_range(self.hydro.u_DA[constituent], self.hydro.mesh, x, y)
-        flow_imag_short = evaluate_CF_range(-self.hydro.u_DA[-constituent], self.hydro.mesh, x, y)
+        flow_real_short = evaluate_CF_range(self.u_DA(constituent), self.hydro.mesh, x, y)
+        flow_imag_short = evaluate_CF_range(-self.u_DA(-constituent), self.hydro.mesh, x, y)
 
         flow_phase_short = np.arctan2(flow_imag_short, flow_real_short)
 

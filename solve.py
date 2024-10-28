@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import spsolve, eigs, qmr, gmres, bicgstab
+from scipy.sparse.linalg import spsolve
 import timeit
 import ngsolve
 import copy
@@ -15,7 +15,7 @@ from mesh_functions import plot_CF_colormap
 
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
           continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm',
-          preconditioner = None, plot_intermediate_results='none'):
+          reduced_hydro: Hydrodynamics=None, plot_intermediate_results='none'):
 
     """
     
@@ -30,7 +30,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - linear_solver:                    choice of linear solver; options: 'pardiso', 'scipy_direct', 'bicgstab'
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
         - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
-        - preconditioner:                   choice of preconditioner for an iterative method; options: None, 'Jacobi', 'Gauss-Seidel', 'reduced_basis', ...,
+        - reduced_hydro (Hydrodynamics):    reduced version of the hydrodynamics object that can be used as a preconditioner for iterative solvers; Note: M and imax must be identical
         - plot_intermediate_results:        indicates whether intermediate results should be plotted and saved; options: 'none' (default) and 'all'.
     
     """
@@ -99,11 +99,33 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             forms_time = timeit.default_timer() - forms_start
             print(f"    Weak form construction took {forms_time} seconds")
 
+            if reduced_hydro is not None:
+                forms_start_reduced = timeit.default_timer()
+                a_reduced = ngsolve.BilinearForm(reduced_hydro.femspace)
+                weakforms.add_weak_form(a_reduced, reduced_hydro.model_options, reduced_hydro.alpha_trialfunctions, reduced_hydro.beta_trialfunctions, reduced_hydro.gamma_trialfunctions,
+                                        reduced_hydro.umom_testfunctions, reduced_hydro.vmom_testfunctions, reduced_hydro.DIC_testfunctions, hydro.M, hydro.imax,
+                                        reduced_hydro.constant_physical_parameters, reduced_hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
+                                        reduced_hydro.riverine_forcing.normal_alpha, only_linear=True)
+                if reduced_hydro.model_options['advection_epsilon'] != 0:
+                    weakforms.add_linearised_nonlinear_terms(a, reduced_hydro.model_options, reduced_hydro.alpha_trialfunctions, hydro.alpha_solution, reduced_hydro.beta_trialfunctions, hydro.beta_solution,
+                                                             reduced_hydro.gamma_trialfunctions, hydro.gamma_solution, 
+                                                             reduced_hydro.umom_testfunctions, reduced_hydro.vmom_testfunctions, reduced_hydro.DIC_testfunctions, hydro.M, hydro.imax,
+                                                             reduced_hydro.constant_physical_parameters, reduced_hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
+                                                             reduced_hydro.riverine_forcing.normal_alpha)
+                forms_time_reduced = timeit.default_timer() - forms_start_reduced
+                print(f"    Weak form construction for reduced model preconditioner took {forms_time} seconds")
+
             # Assemble system matrix
             assembly_start = timeit.default_timer()
             a.Assemble()
             assembly_time = timeit.default_timer() - assembly_start
             print(f"    Assembly took {assembly_time} seconds")
+
+            if reduced_hydro is not None:
+                assembly_start_reduced = timeit.default_timer()
+                a_reduced.Assemble()
+                assembly_time_reduced = timeit.default_timer() - assembly_start_reduced
+                print(f"    Assembly for reduced model preconditioner took {assembly_time_reduced} seconds")
 
             # Solve linearisation
             rhs = hydro.solution_gf.vec.CreateVector()
@@ -119,49 +141,34 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
                 mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
                 rhs_arr = rhs.FV().NumPy()[freedof_list]
-                plt.imshow(np.absolute(mat.todense()), cmap='viridis')
-
-                # if newton_counter > 0:
-                #     eigs, _ = np.linalg.eig(mat.todense())
-                #     abs_eigs = np.absolute(eigs)
-                #     print(f'    Condition number is equal to {np.amax(abs_eigs)/ np.amin(abs_eigs)}')
-                #     print(f'    NNZ: {mat.nnz}')
-                    
-                #     fig, ax = plt.subplots()
-                #     ax.plot(np.sort(abs_eigs)[::-1])
-                #     ax.set_title(f'Spectrum in iteration {newton_counter}')
-                #     ax.set_yscale('log')
-
 
                 sol = spsolve(mat, rhs_arr)
                 du.vec.FV().NumPy()[freedof_list] = sol
             elif linear_solver == 'bicgstab':
                 freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
                 mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
+                if reduced_hydro is not None:
+                    freedof_list_reduced = get_freedof_list(reduced_hydro.femspace.FreeDofs())
+                    reduced_mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a_reduced.mat), freedof_list_reduced)
                 rhs_arr = rhs.FV().NumPy()[freedof_list]
 
-
-                # construct preconditioner
-
-
-                if preconditioner == 'Jacobi': # diagonal scaling preconditioner
-                    diagonal_entries = mat.diagonal()
-                    diagonal_entries_nonzero = np.where(diagonal_entries == 0, np.ones_like(diagonal_entries), diagonal_entries)
-                    print(f'    Condition number is {np.linalg.cond(mat.todense())}')
-                    prec = sp.diags(np.power(diagonal_entries_nonzero, -1))
-                    print(f'    Preconditioned condition number is {np.linalg.cond(mat.todense() @ prec)}')
-                
-                # plt.imshow(mat.todense(), cmap='RdBu')
-
-                plt.spy(mat.todense())
-                if preconditioner is not None:
-                    sol, exitcode = bicgstab(mat, rhs_arr, maxiter=500, M=prec)
+            
+                if newton_counter == 0 and reduced_hydro is not None:
+                    rhs_arr_reduced = project_arr_to_other_basis(rhs_arr, hydro.femspace, reduced_hydro.femspace, hydro.num_equations)
+                    reduced_initial_guess = spsolve(reduced_mat, rhs_arr_reduced)
+                    initial_guess = project_arr_to_other_basis(reduced_initial_guess, reduced_hydro.femspace, hydro.femspace, hydro.num_equations)
                 else:
-                    sol, exitcode = bicgstab(mat, rhs_arr, maxiter=500)
+                    initial_guess = hydro.solution_gf.vec.FV().NumPy()[freedof_list]
 
+                if reduced_hydro is not None:
+                    sol, exitcode = bicgstab(mat, rhs_arr, initial_guess, reduced_A = reduced_mat, reduced_fespace = reduced_hydro.femspace, full_fespace = hydro.femspace, num_equations=hydro.num_equations)
+                else:
+                    sol, exitcode = bicgstab(mat, rhs_arr, initial_guess)
 
-                if exitcode != 0:
-                    print('    BiCG-STAB did not converge in 500 iterations')
+                if exitcode == 0:
+                    print(f"    Bi-CGSTAB did not converge in 500 iterations")
+                else:
+                    print(f"    Bi-CGSTAB converged in {exitcode} iterations")
 
                 du.vec.FV().NumPy()[freedof_list] = sol
             else:
@@ -348,7 +355,7 @@ def get_condition_number(mat, maxits = 100, tol=1e-9):
 # Linear solvers
 
 
-def bicgstab(A, f, u0, tol=1e-12, maxits = 500, reduced_A=None, transition_mass_matrix=None):
+def bicgstab(A, f, u0, tol=1e-12, maxits = 500, reduced_A=None, reduced_fespace=None, full_fespace=None, num_equations=None):
     """Carries out a Bi-CGSTAB solver based on the pseudocode in Van der Vorst (1992). This function has the option for a
     reduced basis preconditioner if reduced_A and transition_mass_matrix are specified. Returns the solution and an exitcode
     indicating how many iterations it took for convergence. If exitcode=0 is returned, then the method did not converge.
@@ -362,7 +369,9 @@ def bicgstab(A, f, u0, tol=1e-12, maxits = 500, reduced_A=None, transition_mass_
     - u0:                       initial guess;
     - tol:                      tolerance for stopping criterion;
     - reduced_A:                reduced basis-version of the system matrix. If this is an ngsolve.BaseMatrix, solves using this matrix are performed with PARDISO; otherwise with sp.spsolve (UMFPACK)
-    - transition_mass_matrix:   matrix specifying how coefficient vectors of the full basis transfer to coefficient vectors of the reduced basis;    
+    - reduced_fespace:          finite element space containing the reduced basis;
+    - full_fespace:             finite element space containing the full basis;
+    - num_equations:            number of equations the system of two-dimensional PDEs consists of; given by hydro.num_equations
     
     """
     # initialising parameters
@@ -388,12 +397,26 @@ def bicgstab(A, f, u0, tol=1e-12, maxits = 500, reduced_A=None, transition_mass_
         p *= beta
         p += r
 
-        preconditioned_p = np.copy(p) # Add reduced-basis preconditioner!
+        # preconditioner
+        if reduced_A is not None:
+            reduced_p = project_arr_to_other_basis(p, full_fespace, reduced_fespace, num_equations)
+            reduced_preconditioned_p = spsolve(reduced_A, reduced_p)
+            preconditioned_p = project_arr_to_other_basis(reduced_preconditioned_p, reduced_fespace, full_fespace, num_equations)
+        else:
+            preconditioned_p = np.copy(p)
+
         v = A @ preconditioned_p
         alpha = rho / np.inner(shadow_r0, v)
         s = r - alpha * v
 
-        z = np.copy(s) # Add reduced-basis preconditioner!
+        # preconditioner
+        if reduced_A is not None:
+            reduced_s = project_arr_to_other_basis(s, full_fespace, reduced_fespace, num_equations)
+            reduced_z = spsolve(reduced_A, reduced_s)
+            z = project_arr_to_other_basis(reduced_z, reduced_fespace, full_fespace, num_equations)
+        else:
+            z = np.copy(s)
+
         t = A @ z
         omega = np.inner(t, s) / np.inner(t, t)
 
@@ -437,6 +460,31 @@ def construct_transition_mass_matrix(full_fespace: ngsolve.comp.FESpace, reduced
             full_gf.vec[n] = 1
             M[k, n] = ngsolve.Integrate(reduced_gf * full_gf, full_fespace.mesh)
     return M
+
+
+def project_arr_to_other_basis(arr, fespace1, fespace2, num_equations):
+    """Projects a numpy coefficient array to another finite element basis. Returns projected array
+    
+    Arguments:
+
+    - arr:              numpy array to project
+    - fespace1:         finite element space corresponding to arr
+    - fespace2:         finite element space corresponding to the projected arr 
+    - num_equations:    how many equations the hydrodynamics-object solves (given by hydro.num_equations)
+    
+    """
+
+    freedoflist1 = get_freedof_list(fespace1.FreeDofs())
+    freedoflist2 = get_freedof_list(fespace2.FreeDofs())
+
+    gridfunction_1 = ngsolve.GridFunction(fespace1)
+    gridfunction_1.vec.FV().NumPy()[freedoflist1] = arr
+
+    gridfunction_2 = ngsolve.GridFunction(fespace2)
+    for i in range(num_equations):
+        gridfunction_2.components[i].Set(gridfunction_1.components[i])
+
+    return gridfunction_2.vec.FV().NumPy()[freedoflist2]
 
 
 

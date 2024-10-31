@@ -15,7 +15,7 @@ from mesh_functions import plot_CF_colormap
 
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
           continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm',
-          reduced_hydro: Hydrodynamics=None, plot_intermediate_results='none'):
+          reduced_hydro: Hydrodynamics=None, plot_intermediate_results='none', parallel=True):
 
     """
     
@@ -31,7 +31,8 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
         - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
         - reduced_hydro (Hydrodynamics):    reduced version of the hydrodynamics object that can be used as a preconditioner for iterative solvers; Note: M and imax must be identical
-        - plot_intermediate_results:        indicates whether intermediate results should be plotted and saved; options: 'none' (default) and 'all'.
+        - plot_intermediate_results:        indicates whether intermediate results should be plotted and saved; options: 'none' (default), 'all' and 'overview'.
+        - parallel:                         flag indicating whether time-costly operations should be performed in parallel (see https://docu.ngsolve.org/latest/how_to/howto_parallel.html)
     
     """
 
@@ -73,7 +74,12 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         print(f"\nCONTINUATION STEP {continuation_counter}: Epsilon = {hydro.model_options['advection_epsilon']}, Av = {hydro.constant_physical_parameters['Av']}.\n")
         print("Setting up full weak form\n")
 
-        hydro.setup_forms(skip_nonlinear = (hydro.model_options['advection_epsilon'] == 0))
+        if parallel:
+            with ngsolve.TaskManager():
+                hydro.setup_forms(skip_nonlinear = (hydro.model_options['advection_epsilon'] == 0))
+        else:
+            hydro.setup_forms(skip_nonlinear = (hydro.model_options['advection_epsilon'] == 0))
+
 
         # Start the Newton method
 
@@ -85,17 +91,31 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             # Set-up weak forms for linearisation
 
             forms_start = timeit.default_timer()
-            a = ngsolve.BilinearForm(hydro.femspace)
-            weakforms.add_weak_form(a, hydro.model_options, hydro.alpha_trialfunctions, hydro.beta_trialfunctions, hydro.gamma_trialfunctions,
-                                    hydro.umom_testfunctions, hydro.vmom_testfunctions, hydro.DIC_testfunctions, hydro.M, hydro.imax,
-                                    hydro.constant_physical_parameters, hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
-                                    hydro.riverine_forcing.normal_alpha, only_linear=True)
-            if hydro.model_options['advection_epsilon'] != 0:
-                weakforms.add_linearised_nonlinear_terms(a, hydro.model_options, hydro.alpha_trialfunctions, hydro.alpha_solution, hydro.beta_trialfunctions, hydro.beta_solution,
-                                                         hydro.gamma_trialfunctions, hydro.gamma_solution, 
-                                                         hydro.umom_testfunctions, hydro.vmom_testfunctions, hydro.DIC_testfunctions, hydro.M, hydro.imax,
-                                                         hydro.constant_physical_parameters, hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
-                                                         hydro.riverine_forcing.normal_alpha)
+            if parallel:
+                with ngsolve.TaskManager():
+                    a = ngsolve.BilinearForm(hydro.femspace)
+                    weakforms.add_weak_form(a, hydro.model_options, hydro.alpha_trialfunctions, hydro.beta_trialfunctions, hydro.gamma_trialfunctions,
+                                            hydro.umom_testfunctions, hydro.vmom_testfunctions, hydro.DIC_testfunctions, hydro.M, hydro.imax,
+                                            hydro.constant_physical_parameters, hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
+                                            hydro.riverine_forcing.normal_alpha, only_linear=True)
+                    if hydro.model_options['advection_epsilon'] != 0:
+                        weakforms.add_linearised_nonlinear_terms(a, hydro.model_options, hydro.alpha_trialfunctions, hydro.alpha_solution, hydro.beta_trialfunctions, hydro.beta_solution,
+                                                                hydro.gamma_trialfunctions, hydro.gamma_solution, 
+                                                                hydro.umom_testfunctions, hydro.vmom_testfunctions, hydro.DIC_testfunctions, hydro.M, hydro.imax,
+                                                                hydro.constant_physical_parameters, hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
+                                                                hydro.riverine_forcing.normal_alpha)
+            else:
+                a = ngsolve.BilinearForm(hydro.femspace)
+                weakforms.add_weak_form(a, hydro.model_options, hydro.alpha_trialfunctions, hydro.beta_trialfunctions, hydro.gamma_trialfunctions,
+                                        hydro.umom_testfunctions, hydro.vmom_testfunctions, hydro.DIC_testfunctions, hydro.M, hydro.imax,
+                                        hydro.constant_physical_parameters, hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
+                                        hydro.riverine_forcing.normal_alpha, only_linear=True)
+                if hydro.model_options['advection_epsilon'] != 0:
+                    weakforms.add_linearised_nonlinear_terms(a, hydro.model_options, hydro.alpha_trialfunctions, hydro.alpha_solution, hydro.beta_trialfunctions, hydro.beta_solution,
+                                                            hydro.gamma_trialfunctions, hydro.gamma_solution, 
+                                                            hydro.umom_testfunctions, hydro.vmom_testfunctions, hydro.DIC_testfunctions, hydro.M, hydro.imax,
+                                                            hydro.constant_physical_parameters, hydro.spatial_physical_parameters, hydro.vertical_basis, hydro.time_basis,
+                                                            hydro.riverine_forcing.normal_alpha)
             forms_time = timeit.default_timer() - forms_start
             print(f"    Weak form construction took {forms_time} seconds")
 
@@ -117,7 +137,11 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
             # Assemble system matrix
             assembly_start = timeit.default_timer()
-            a.Assemble()
+            if parallel:
+                with ngsolve.TaskManager():
+                    a.Assemble()
+            else:
+                a.Assemble()
             assembly_time = timeit.default_timer() - assembly_start
             print(f"    Assembly took {assembly_time} seconds")
 
@@ -136,7 +160,11 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
             inversion_start = timeit.default_timer()
             if linear_solver == 'pardiso':
-                du.vec.data = a.mat.Inverse(freedofs=hydro.femspace.FreeDofs(), inverse='pardiso') * rhs
+                if parallel:
+                    with ngsolve.TaskManager():
+                        du.vec.data = a.mat.Inverse(freedofs=hydro.femspace.FreeDofs(), inverse='pardiso') * rhs
+                else:
+                    du.vec.data = a.mat.Inverse(freedofs=hydro.femspace.FreeDofs(), inverse='pardiso') * rhs
             elif linear_solver == 'scipy_direct':
                 freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
                 mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
@@ -181,7 +209,12 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             # Compute stopping criterion
             residual = hydro.solution_gf.vec.CreateVector()
             apply_start = timeit.default_timer()
-            hydro.total_bilinearform.Apply(hydro.solution_gf.vec, residual)
+            if parallel:
+                with ngsolve.TaskManager():
+                    hydro.total_bilinearform.Apply(hydro.solution_gf.vec, residual)
+            else:
+                hydro.total_bilinearform.Apply(hydro.solution_gf.vec, residual)
+            
             apply_time = timeit.default_timer() - apply_start
             print(f"    Evaluating weak form at current Newton iterate took {apply_time} seconds.")
 
@@ -209,7 +242,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                         plot_CF_colormap(ngsolve.grad(hydro.beta_solution[m][i])[0], hydro.mesh, refinement_level=3, show_mesh=True, title=f'betax_({m},{i})', save = f"iteration{newton_counter}_betax({m},{i})")
                         plot_CF_colormap(ngsolve.grad(hydro.beta_solution[m][i])[1], hydro.mesh, refinement_level=3, show_mesh=True, title=f'betay_({m},{i})', save = f"iteration{newton_counter}_betay({m},{i})")
 
-                for i in range(-hydro.imax, hydro.imax):
+                for i in range(-hydro.imax, hydro.imax+1):
                     plot_CF_colormap(hydro.gamma_solution[i], hydro.mesh, refinement_level=3, show_mesh=True, title=f'gamma_({i})', save = f"iteration{newton_counter}_gamma({i})")
                     u_DA = sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.alpha_solution[m][i] for m in range(hydro.M)])
                     plot_CF_colormap(u_DA, hydro.mesh, refinement_level=3, show_mesh=True, title=f'u_DA_({i})', save = f"iteration{newton_counter}_uDA({i})")
@@ -218,6 +251,22 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
 
                 plt.close(fig = 'all')
+            elif plot_intermediate_results == 'overview':
+                for i in range(-hydro.imax, hydro.imax+1):
+                    plot_CF_colormap(hydro.gamma_solution[i], hydro.mesh, refinement_level=3, show_mesh=True, title=f'gamma_({i})', save = f"iteration{newton_counter}_gamma({i})")
+                    u_DA = sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.alpha_solution[m][i] for m in range(hydro.M)])
+                    u_DAx = sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.alpha_solution[m][i])[0] for m in range(hydro.M)])
+                    u_DAy = sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.alpha_solution[m][i])[1] for m in range(hydro.M)])
+                    plot_CF_colormap(u_DA, hydro.mesh, refinement_level=3, show_mesh=True, title=f'u_DA_({i})', save = f"iteration{newton_counter}_uDA({i})")
+                    plot_CF_colormap(u_DAx, hydro.mesh, refinement_level=3, show_mesh=True, title=f'u_DAx_({i})', save = f"iteration{newton_counter}_uDAx({i})")
+                    plot_CF_colormap(u_DAy, hydro.mesh, refinement_level=3, show_mesh=True, title=f'u_DAy_({i})', save = f"iteration{newton_counter}_uDAy({i})")
+
+                    v_DA = sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.beta_solution[m][i] for m in range(hydro.M)])
+                    v_DAx = sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.beta_solution[m][i])[0] for m in range(hydro.M)])
+                    v_DAy = sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.beta_solution[m][i])[1] for m in range(hydro.M)])
+                    plot_CF_colormap(v_DA, hydro.mesh, refinement_level=3, show_mesh=True, title=f'v_DA_({i})', save = f"iteration{newton_counter}_vDA({i})")
+                    plot_CF_colormap(v_DAx, hydro.mesh, refinement_level=3, show_mesh=True, title=f'v_DAx_({i})', save = f"iteration{newton_counter}_vDAx({i})")
+                    plot_CF_colormap(v_DAy, hydro.mesh, refinement_level=3, show_mesh=True, title=f'v_DAy_({i})', save = f"iteration{newton_counter}_vDAy({i})")
 
             if stopcriterion_value < tolerance:
                 print('Newton-Raphson method converged')

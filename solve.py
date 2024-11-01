@@ -4,6 +4,7 @@ from scipy.sparse.linalg import spsolve
 import timeit
 import ngsolve
 import copy
+import matplotlib.pyplot as plt
 
 from hydrodynamics import *
 import define_weak_forms as weakforms

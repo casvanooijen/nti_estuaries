@@ -1,37 +1,8 @@
-# import ngsolve
-# from ngsolve.solvers import *
-# # from ngsolve.la import IdentityMatrix, EigenValues_Preconditioner
-# import numpy as np
-# import scipy.sparse as sp
-# import scipy.sparse.linalg
-# import os
-# import TruncationBasis
-# import matplotlib.pyplot as plt
-# from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT
-# import copy
-# from modeloptions import ModelOptions
-# import define_weak_forms as weakforms
-# from minusonepower import minusonepower
-# import mesh_functions
-# import timeit
-# from ngsolve.solvers import GMRes
-# import pypardiso
-
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg
-import matplotlib.pyplot as plt
-import copy
 import os
-import timeit
 import json
 import dill
-import pickle
-
-
 import ngsolve
-from ngsolve.solvers import *
-# import pypardiso
 
 import TruncationBasis
 from geometry.create_geometry import parametric_geometry, RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
@@ -40,8 +11,6 @@ from spatial_parameter import SpatialParameter
 
 import define_weak_forms as weakforms
 import mesh_functions
-
-
 
 
 def count_free_dofs(fes):

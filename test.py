@@ -7,7 +7,6 @@ from hydrodynamics import Hydrodynamics, select_model_options
 import boundary_fitted_coordinates
 from spatial_parameter import SpatialParameter
 from postprocessing import *
-from TruncationBasis import eigbasis_constantAv, unit_harmonic_time_basis
 from solve import *
 from geometry.geometries import *
 from geometry.create_geometry import parametric_geometry, WALLDOWN, WALLUP, RIVER, SEA

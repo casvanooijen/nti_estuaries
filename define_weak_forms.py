@@ -1,7 +1,7 @@
 import ngsolve
 import ngsolve.solvers
 import numpy as np
-from TruncationBasis import TruncationBasis
+from truncationbasis import TruncationBasis
 import matplotlib.pyplot as plt
 import geometry.geometries
 from geometry.create_geometry import RIVER, SEA, BOUNDARY_DICT

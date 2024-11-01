@@ -4,7 +4,7 @@ import json
 import dill
 import ngsolve
 
-import TruncationBasis
+import truncationbasis
 from geometry.create_geometry import parametric_geometry, RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
 from boundary_fitted_coordinates import generate_bfc
 from spatial_parameter import SpatialParameter
@@ -100,9 +100,9 @@ class Hydrodynamics(object):
         - imax (int):                                           number of tidal constituents taken into account, excluding subtidal;
         - M (int):                                              number of vertical basis functions taken into account;
         - order (int):                                          order of the spectral element basis (Dubiner basis);
-        - time_basis (TruncationBasis):                         harmonic time basis;
-        - vertical_basis (TruncationBasis):                     vertical basis;
-        - vertical_basis_name (str):                            name of the vertical basis if it is a default one from TruncationBasis.py
+        - time_basis (truncationbasis):                         harmonic time basis;
+        - vertical_basis (truncationbasis):                     vertical basis;
+        - vertical_basis_name (str):                            name of the vertical basis if it is a default one from truncationbasis.py
         - constant_physical_parameters (dict):                  dictionary containing values of constant physical parameters;
         - spatial_physical_parameters (dict):                   dictionary containing spatially varying physical parameters, such as
                                                                 bathymetry, in the form of SpatialParameter objects;
@@ -136,9 +136,9 @@ class Hydrodynamics(object):
         self.num_equations = (2*M+1)*(2*imax + 1)
         self.order = order
         
-        self.time_basis = TruncationBasis.unit_harmonic_time_basis
+        self.time_basis = truncationbasis.unit_harmonic_time_basis
         if self.model_options['bed_bc'] == 'no_slip':
-            self.vertical_basis = TruncationBasis.eigbasis_constantAv
+            self.vertical_basis = truncationbasis.eigbasis_constantAv
         
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
@@ -415,7 +415,7 @@ class Hydrodynamics(object):
 
     def save(self, name, **kwargs):
         """Saves the hydrodynamics object. Only possible if the Fourier/vertical bases are chosen from the predefined 
-        bases in TruncationBasis.py. The folder contains:
+        bases in truncationbasis.py. The folder contains:
         
         - options.txt:          contains the model options of the ModelOptions object, including which Fourier/vertical bases were used;
         - params.txt:           contains the SEM expansion basis order, M, imax and the constant physical parameters;
@@ -760,9 +760,9 @@ def load_hydrodynamics(name, **kwargs):
     f_params.close()
     # the remainder of this dict constitutes the constant physical parameters of the simulation
     if scaling:
-        time_basis = TruncationBasis.unit_harmonic_time_basis  # only this particular type of Fourier basis is supported
+        time_basis = truncationbasis.unit_harmonic_time_basis  # only this particular type of Fourier basis is supported
     else:
-        time_basis = TruncationBasis.harmonic_time_basis(params['sigma'])
+        time_basis = truncationbasis.harmonic_time_basis(params['sigma'])
 
     # mesh
 

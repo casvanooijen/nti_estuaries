@@ -106,7 +106,6 @@ class Hydrodynamics(object):
         - constant_physical_parameters (dict):                  dictionary containing values of constant physical parameters;
         - spatial_physical_parameters (dict):                   dictionary containing spatially varying physical parameters, such as
                                                                 bathymetry, in the form of SpatialParameter objects;
-        - loaded_from_files (bool):                             flag indicating whether this hydrodynamics-object was manually created or loaded in;
         - nfreedofs (int):                                      number of free degrees of freedom;
         - femspace (ngsolve.comp.H1):                           finite element space associated with this mesh and parameter set;
         - n:                                                    ngsolve normal vector to the boundary of the mesh;
@@ -157,11 +156,7 @@ class Hydrodynamics(object):
         else:
             self.boundary_maxh_dict = boundary_maxh_dict
         
-        
-        self.loaded_from_files = False # flag that indicates whether the object is loaded from a saved solution; if it is, the spatial parameters are stored differently
-        if self.vertical_basis is TruncationBasis.eigbasis_constantAv: # not so pretty but it works
-            self.vertical_basis_name = "eigbasis_constantAv"
-
+    
         # check/generate advection_influence_matrix
 
         if self.model_options['advection_influence_matrix'] is None:
@@ -433,22 +428,13 @@ class Hydrodynamics(object):
 
         # model options
 
-        options = {'vertical_basis_name': self.vertical_basis_name}
+        options = {}
         options.update(self.model_options)
 
         options['advection_influence_matrix'] = options['advection_influence_matrix'].tolist()
 
         with open(f"{name}/options.json", 'x') as f_options:
             json.dump(options, f_options, indent=4)
-
-
-        # options_string = f"bed_bc:{self.model_options['bed_bc']}\nleading_order_surface:{self.model_options['leading_order_surface']}\n"+\
-        #                  f"veddy_viscosity_assumption:{self.model_options['veddy_viscosity_assumption']}\ndensity:{self.model_options['density']}\n"+\
-        #                  f"advection_epsilon:{self.model_options['advection_epsilon']}\nvertical_basis_name:{self.vertical_basis_name}"
-        
-        # f_options = open(f"{name}/options.txt", 'x')
-        # f_options.write(options_string)
-        # f_options.close()
 
         # constant parameters
 
@@ -460,36 +446,16 @@ class Hydrodynamics(object):
 
         # geometrycurves and partition/maxh dictionaries
 
-        with open(f"{name}/boundary_partition_dict.json", 'x') as f_partdict:
+        os.makedirs(f"{name}/geometry")
+
+        with open(f"{name}/geometry/boundary_partition_dict.json", 'x') as f_partdict:
             json.dump(self.boundary_partition_dict, f_partdict)
 
-        with open(f"{name}/boundary_maxh_dict.json", 'x') as f_maxhdict:
+        with open(f"{name}/geometry/boundary_maxh_dict.json", 'x') as f_maxhdict:
             json.dump(self.boundary_maxh_dict, f_maxhdict)
 
-        with open(f'{name}/geometrycurves.pkl', 'wb') as f_geomcurves:
+        with open(f'{name}/geometry/geometrycurves.pkl', 'wb') as f_geomcurves:
             dill.dump(self.geometrycurves, f_geomcurves)
-
-
-        # params_string = f"sem_order:{self.order}\nM:{self.M}\nimax:{self.imax}"
-        # for name, value in self.constant_physical_parameters.items():
-        #     params_string += f"\n{name}:{value}"
-        
-        # f_params = open(f"{name}/params.txt", 'x')
-        # f_params.write(params_string)
-        # f_params.close()
-
-        # mesh
-
-        # self.mesh.ngmesh.Save(f'{name}/mesh.vol') # save the netgen mesh
-        
-        # with open(f"{name}/mesh.pkl", 'wb') as file:
-        #     pickle.dump(self.mesh, file)
-
-
-        # with open(f"{name}/fespace.pkl", 'wb') as file:
-        #     pickle.dump(self.femspace, file)
-
-
 
         # spatial parameters
 
@@ -499,21 +465,9 @@ class Hydrodynamics(object):
             with open(f'{name}/spatial_parameters/{paramname}.pkl', 'wb') as file:
                 dill.dump(value.fh, file, protocol=dill.HIGHEST_PROTOCOL)
 
-            # oneDfemspace = ngsolve.H1(self.mesh, order = self.order)
-            # gf = ngsolve.GridFunction(oneDfemspace)
-            # gf.Set(value.cf)
-
-            # mesh_functions.save_gridfunction(gf, f"{name}/spatial_parameters/{name}")
-
         # solution
 
         mesh_functions.save_gridfunction(self.solution_gf, f"{name}/solution", **kwargs)
-        # with open(f'{name}/solution.pkl', 'wb') as file:
-        #     dill.dump(self.solution_gf, file)
-
-
-
-        
 
 
     def hrefine(self, threshold: float, numits: int = 1, based_on = 'bathygrad'):
@@ -530,12 +484,8 @@ class Hydrodynamics(object):
         
         """
         if based_on == 'bathygrad':
-            if self.loaded_from_files:
-                bathy_gradnorm = ngsolve.sqrt(ngsolve.grad(self.spatial_physical_parameters['H'])[0] * ngsolve.grad(self.spatial_physical_parameters['H'])[0] + 
-                                            ngsolve.grad(self.spatial_physical_parameters['H'])[1] * ngsolve.grad(self.spatial_physical_parameters['H'])[1])
-            else:
-                bathy_gradnorm = ngsolve.sqrt(self.spatial_physical_parameters['H'].gradient_cf[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + 
-                                            self.spatial_physical_parameters['H'].gradient_cf[1] * self.spatial_physical_parameters['H'].gradient_cf[1])
+            bathy_gradnorm = ngsolve.sqrt(self.spatial_physical_parameters['H'].gradient_cf[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + 
+                                          self.spatial_physical_parameters['H'].gradient_cf[1] * self.spatial_physical_parameters['H'].gradient_cf[1])
         else:
             raise ValueError("Invalid value for 'based_on'. Please choose from the following options: 'bathygrad'.")
             
@@ -543,12 +493,12 @@ class Hydrodynamics(object):
 
             num_refined = mesh_functions.refine_mesh_by_elemental_integration(self.mesh, bathy_gradnorm, threshold)
 
-            if not self.loaded_from_files:
-                for name, param in self.spatial_physical_parameters.items(): # SpatialParameter-objects need to be redefined on the new mesh
-                    bfc = generate_bfc(self.mesh, self.order, 'diffusion')
-                    self.spatial_physical_parameters[name] = SpatialParameter(param.fh, bfc)
+           
+            for name, param in self.spatial_physical_parameters.items(): # SpatialParameter-objects need to be redefined on the new mesh
+                bfc = generate_bfc(self.mesh, self.order, 'diffusion')
+                self.spatial_physical_parameters[name] = SpatialParameter(param.fh, bfc)
 
-                bathy_gradnorm = ngsolve.sqrt(self.spatial_physical_parameters['H'].gradient_cf[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + 
+            bathy_gradnorm = ngsolve.sqrt(self.spatial_physical_parameters['H'].gradient_cf[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + 
                                               self.spatial_physical_parameters['H'].gradient_cf[1] * self.spatial_physical_parameters['H'].gradient_cf[1])
                 
             if num_refined == 0:
@@ -789,13 +739,6 @@ def load_hydrodynamics(name, **kwargs):
     f_options = open(f'{name}/options.json', 'r')
     model_options: dict = json.load(f_options)
     
-    vertical_basis_name = model_options.pop('vertical_basis_name')
-
-    if vertical_basis_name == 'eigbasis_constantAv':
-        vertical_basis = TruncationBasis.eigbasis_constantAv
-    else:
-        raise ValueError(f"Could not load hydrodynamics object: vertical basis name {model_options['vertical_basis_name']} invalid.")
-    
     model_options['advection_influence_matrix'] = np.array(model_options['advection_influence_matrix'])
 
     f_options.close()
@@ -828,13 +771,13 @@ def load_hydrodynamics(name, **kwargs):
     # with open(f'{name}/mesh.pkl', 'rb') as file:
     #     mesh = dill.load(file)
 
-    with open(f'{name}/geometrycurves.pkl', 'rb') as f_geomcurves:
+    with open(f'{name}/geometry/geometrycurves.pkl', 'rb') as f_geomcurves:
         geometrycurves = dill.load(f_geomcurves)
 
-    with open(f'{name}/boundary_partition_dict.json', 'rb') as f_partdict:
+    with open(f'{name}/geometry/boundary_partition_dict.json', 'rb') as f_partdict:
         boundary_partition_dict = json.load(f_partdict)
 
-    with open(f'{name}/boundary_maxh_dict.json', 'rb') as f_maxhdict:
+    with open(f'{name}/geometry/boundary_maxh_dict.json', 'rb') as f_maxhdict:
         boundary_maxhdict = json.load(f_maxhdict)
 
     geometry = parametric_geometry(geometrycurves, boundary_partition_dict, boundary_maxhdict)
@@ -843,8 +786,7 @@ def load_hydrodynamics(name, **kwargs):
     bfc = generate_bfc(mesh, order=sem_order, method='diffusion', alpha=1)
 
     # Make Hydrodynamics object
-    hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis)
-    hydro.loaded_from_files = True
+    hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis)
     hydro.scaling = scaling
 
     

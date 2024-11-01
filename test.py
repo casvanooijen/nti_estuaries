@@ -24,11 +24,7 @@ geometrycurves = parametric_rectangle(1, 1) # collection of parametric curves de
 # we use a unit square because the equations are scaled accordingly
 
 maxh_global = 0.2 # global element size
-
-boundary_maxh_dict = {WALLDOWN: [maxh_global], WALLUP: [maxh_global], RIVER: [maxh_global], SEA: [maxh_global]} # set element size for each partition: allows for variable mesh sizes!
-boundary_parameter_partition_dict = {WALLDOWN: [0,1], WALLUP: [0,1], RIVER: [0,1], SEA: [0,1]}  # partition boundary into segments, assuming it starts at 0 and ends at 1
-
-geometry = parametric_geometry(geometrycurves, boundary_parameter_partition_dict, boundary_maxh_dict)
+geometry = parametric_geometry(geometrycurves)
 
 # create mesh
 
@@ -109,7 +105,7 @@ model_options = select_model_options(bed_bc='no_slip',
 
 # create object
 
-hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, boundary_partition_dict=boundary_parameter_partition_dict, boundary_maxh_dict=boundary_maxh_dict, maxh_global=maxh_global, geometrycurves=geometrycurves)
+hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, geometrycurves=geometrycurves)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f, Ah=Ah)
 hydro.set_spatial_physical_parameters(H=H_sp, density=rho_sp, R=R_sp, nonlinear_ramp=ramp_sp)
 

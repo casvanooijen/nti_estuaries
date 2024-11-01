@@ -164,13 +164,13 @@ class PostProcessing(object):
 
         # Get derivative gridfunctions
 
-        self.ux = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
-        self.vx = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
-        self.gammax = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0]
+        self.ux = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)]) / x_scaling
+        self.vx = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)]) / x_scaling
+        self.gammax = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0] / x_scaling
 
-        self.uy = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
-        self.vy = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)])
-        self.gammay = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0]
+        self.uy = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)]) / y_scaling
+        self.vy = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)]) / y_scaling
+        self.gammay = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0] / y_scaling
 
         self.usig = lambda q, sigma : sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H
         self.vsig = lambda q, sigma : sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #same
@@ -178,11 +178,11 @@ class PostProcessing(object):
         self.usigsig = lambda q, sigma: sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.second_derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H^2
         self.vsigsig = lambda q, sigma: sum([hydro.beta_solution[m][q] * hydro.vertical_basis.second_derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H^2
 
-        self.ux_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
-        self.vx_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
+        self.ux_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)]) / x_scaling
+        self.vx_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[0] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)]) / x_scaling
 
-        self.uy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
-        self.vy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
+        self.uy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)]) / y_scaling
+        self.vy_timed = lambda t, sigma: sum([sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)]) / y_scaling
 
         self.usig_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
         self.vsig_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
@@ -1048,7 +1048,7 @@ class PostProcessing(object):
         ax_crosssection.set_title(f'Lateral flow at t = {phase}' + r'$\sigma^{-1}$' f' s\nMaximum lateral velocity = {np.round(np.amax(physical_norms),5)}')
 
 
-    def plot_cross_section_residual_forcing_mechanisms(self, p1: np.ndarray, p2: np.ndarray, num_horizontal_points, num_vertical_points, figsize=(12,6), cmap='RdBu', savename=None, **kwargs):
+    def plot_cross_section_residual_forcing_mechanisms(self, p1: np.ndarray, p2: np.ndarray, num_horizontal_points, num_vertical_points, figsize=(12,6), cmap='RdBu', savename=None, component='u', **kwargs):
         """Plots all of the different forcing mechanisms for along-channel residual currents, along with the total forcing and the resulting residual flow."""
 
         width = np.linalg.norm(p1-p2, 2)
@@ -1065,54 +1065,60 @@ class PostProcessing(object):
         s_grid = np.tile(s_range, (num_vertical_points, 1))
         z_grid = np.array([np.linspace(-depth[i], 0, num_vertical_points) for i in range(num_horizontal_points)]).T
 
-        uux = lambda sig: 0.5 * epsilon * (self.u(1, sig) * self.ux(1, sig) + self.u(-1, sig) * self.ux(-1, sig))
-        vuy = lambda sig: 0.5 * epsilon * (self.v(1, sig) * self.uy(1, sig) + self.v(-1, sig) * self.uy(-1, sig))
-        wuz = lambda sig: 0.5 / H * epsilon * (self.w(1, sig) * self.usig(1, sig) + self.w(-1, sig) * self.usig(-1, sig))
-        zetax = lambda sig: self.hydro.constant_physical_parameters['g'] * self.gammax(0)
-        fv = lambda sig: -self.hydro.constant_physical_parameters['f'] * self.v(0, sig)
+        if component == 'u':
+            along_advection = lambda sig: 0.5 * epsilon * (self.u(1, sig) * self.ux(1, sig) + self.u(-1, sig) * self.ux(-1, sig))
+            lat_advection = lambda sig: 0.5 * epsilon * (self.v(1, sig) * self.uy(1, sig) + self.v(-1, sig) * self.uy(-1, sig))
+            vert_advection = lambda sig: 0.5 / H * epsilon * (self.w(1, sig) * self.usig(1, sig) + self.w(-1, sig) * self.usig(-1, sig))
+            pressure_gradient = lambda sig: self.hydro.constant_physical_parameters['g'] * self.gammax(0)
+            coriolis = lambda sig: -self.hydro.constant_physical_parameters['f'] * self.v(0, sig)
+            total_flow = lambda sig: self.u(0, sig)
+        elif component == 'v':
+            along_advection = lambda sig: 0.5 * epsilon * (self.u(1, sig) * self.vx(1, sig) + self.u(-1, sig) * self.vx(-1, sig))
+            lat_advection = lambda sig: 0.5 * epsilon * (self.v(1, sig) * self.vy(1, sig) + self.v(-1, sig) * self.vy(-1, sig))
+            vert_advection = lambda sig: 0.5 / H * epsilon * (self.w(1, sig) * self.vsig(1, sig) + self.w(-1, sig)*self.vsig(-1, sig))
+            pressure_gradient = lambda sig: self.hydro.constant_physical_parameters['g'] * self.gammay(0)
+            coriolis = lambda sig: self.hydro.constant_physical_parameters['f'] * self.u(0, sig)
+            total_flow = lambda sig: self.v(0, sig)
 
-        total_forcing = lambda sig: uux(sig) + vuy(sig) + wuz(sig) + zetax(sig) + fv(sig)
-        total_flow = lambda sig: self.u(0, sig)
 
-
-        UUx = evaluate_vertical_structure_at_cross_section(self.hydro, uux, p1, p2, num_horizontal_points, num_vertical_points)
-        VUy = evaluate_vertical_structure_at_cross_section(self.hydro, vuy, p1, p2, num_horizontal_points, num_vertical_points)
-        WUz = evaluate_vertical_structure_at_cross_section(self.hydro, wuz, p1, p2, num_horizontal_points, num_vertical_points)
-        Zx = evaluate_vertical_structure_at_cross_section(self.hydro, zetax, p1, p2, num_horizontal_points, num_vertical_points)
-        fV = evaluate_vertical_structure_at_cross_section(self.hydro, fv, p1, p2, num_horizontal_points, num_vertical_points)
+        along_advection_eval = evaluate_vertical_structure_at_cross_section(self.hydro, along_advection, p1, p2, num_horizontal_points, num_vertical_points)
+        lat_advection_eval = evaluate_vertical_structure_at_cross_section(self.hydro, lat_advection, p1, p2, num_horizontal_points, num_vertical_points)
+        vert_advection_eval = evaluate_vertical_structure_at_cross_section(self.hydro, vert_advection, p1, p2, num_horizontal_points, num_vertical_points)
+        pressure_gradient_eval = evaluate_vertical_structure_at_cross_section(self.hydro, pressure_gradient, p1, p2, num_horizontal_points, num_vertical_points)
+        coriolis_eval = evaluate_vertical_structure_at_cross_section(self.hydro, coriolis, p1, p2, num_horizontal_points, num_vertical_points)
         # F = evaluate_vertical_structure_at_cross_section(self.hydro, total_forcing, p1, p2, num_horizontal_points, num_vertical_points)
-        F = UUx + VUy + WUz + Zx + fV
-        U = evaluate_vertical_structure_at_cross_section(self.hydro, total_flow, p1, p2, num_horizontal_points, num_vertical_points)
+        total_eval = along_advection_eval + lat_advection_eval + vert_advection_eval + pressure_gradient_eval + coriolis_eval
+        flow_eval = evaluate_vertical_structure_at_cross_section(self.hydro, total_flow, p1, p2, num_horizontal_points, num_vertical_points)
         
 
-        maxUUx = np.amax(np.absolute(UUx))
-        maxVUy = np.amax(np.absolute(VUy))
-        maxWUz = np.amax(np.absolute(WUz))
-        maxZx = np.amax(np.absolute(Zx))
-        maxfV = np.amax(np.absolute(fV))
-        maxF = np.amax(np.absolute(F))
-        maxU = np.amax(np.absolute(U))
+        max_along_advection = np.amax(np.absolute(along_advection_eval))
+        max_lat_advection = np.amax(np.absolute(lat_advection_eval))
+        max_vert_advection = np.amax(np.absolute(vert_advection_eval))
+        max_pressure_gradient = np.amax(np.absolute(pressure_gradient_eval))
+        max_coriolis = np.amax(np.absolute(coriolis_eval))
+        max_totalforcing = np.amax(np.absolute(total_eval))
+        max_flow = np.amax(np.absolute(flow_eval))
 
         fig, ax = plt.subplots(3, 2, figsize=figsize)
         
-        #   UUx     VUy   
-        #   WUz     Zx
+        #   along_advection     lat_advection   
+        #   vert_advection     pressure_gradient
         #   F       U
         
-        UUx_color = ax[0,0].pcolormesh(s_grid, z_grid, UUx, vmin=-maxUUx, vmax=maxUUx, cmap=cmap, **kwargs)
-        VUy_color = ax[0,1].pcolormesh(s_grid, z_grid, VUy, vmin=-maxVUy, vmax=maxVUy, cmap=cmap, **kwargs)
-        WUz_color = ax[1,0].pcolormesh(s_grid, z_grid, WUz, vmin=-maxWUz, vmax=maxWUz, cmap=cmap, **kwargs)
-        Zx_color = ax[1,1].pcolormesh(s_grid, z_grid, Zx, vmin=-maxZx, vmax=maxZx, cmap=cmap, **kwargs)
-        F_color = ax[2,1].pcolormesh(s_grid, z_grid, F, vmin=-maxF, vmax=maxF, cmap=cmap, **kwargs)
+        along_advection_color = ax[0,0].pcolormesh(s_grid, z_grid, along_advection_eval, vmin=-max_along_advection, vmax=max_along_advection, cmap=cmap, **kwargs)
+        lat_advection_color = ax[0,1].pcolormesh(s_grid, z_grid, lat_advection_eval, vmin=-max_lat_advection, vmax=max_lat_advection, cmap=cmap, **kwargs)
+        vert_advection_color = ax[1,0].pcolormesh(s_grid, z_grid, vert_advection_eval, vmin=-max_vert_advection, vmax=max_vert_advection, cmap=cmap, **kwargs)
+        pressure_gradient_color = ax[1,1].pcolormesh(s_grid, z_grid, pressure_gradient_eval, vmin=-max_pressure_gradient, vmax=max_pressure_gradient, cmap=cmap, **kwargs)
+        F_color = ax[2,1].pcolormesh(s_grid, z_grid, total_eval, vmin=-max_totalforcing, vmax=max_totalforcing, cmap=cmap, **kwargs)
         # U_color = ax[2,1].pcolormesh(s_grid, z_grid, U, vmin=-maxU, vmax=maxU, cmap=cmap, **kwargs)
-        fV_color = ax[2,0].pcolormesh(s_grid, z_grid, fV, vmin=-maxfV, vmax=maxfV, cmap=cmap, **kwargs)
+        coriolis_color = ax[2,0].pcolormesh(s_grid, z_grid, coriolis_eval, vmin=-max_coriolis, vmax=max_coriolis, cmap=cmap, **kwargs)
 
-        UUx_cbar = plt.colorbar(UUx_color, ax=ax[0,0])
-        VUy_cbar = plt.colorbar(VUy_color, ax=ax[0,1])
-        WUz_cbar = plt.colorbar(WUz_color, ax=ax[1,0])
-        Zx_cbar = plt.colorbar(Zx_color, ax=ax[1,1])
+        along_advection_cbar = plt.colorbar(along_advection_color, ax=ax[0,0])
+        lat_advection_cbar = plt.colorbar(lat_advection_color, ax=ax[0,1])
+        vert_advection_cbar = plt.colorbar(vert_advection_color, ax=ax[1,0])
+        pressure_gradient_cbar = plt.colorbar(pressure_gradient_color, ax=ax[1,1])
         F_cbar = plt.colorbar(F_color, ax=ax[2,1])
-        fV_cbar = plt.colorbar(fV_color, ax=ax[2,0])
+        coriolis_cbar = plt.colorbar(coriolis_color, ax=ax[2,0])
 
         ax[0,0].set_ylabel('-Depth [m]')
         ax[1,0].set_ylabel('-Depth [m]')
@@ -1136,14 +1142,22 @@ class PostProcessing(object):
         ax[1,1].fill_between(s_range, -np.amax(depth), -depth, color='silver')
         ax[0,1].fill_between(s_range, -np.amax(depth), -depth, color='silver')
 
-        ax[0,0].set_title(r'$\varepsilon\overline{uu_x}$')
-        ax[0,1].set_title(r'$\varepsilon\overline{vu_y}$')
-        ax[1,0].set_title(r'$\varepsilon\overline{wu_z}$')
-        ax[1,1].set_title(r'$g\overline{\zeta_x}$')
-        ax[2,0].set_title(r'$-f\overline{v}$')
-        ax[2,1].set_title('All forcing')
+        if component == 'u':
+            ax[0,0].set_title(r'$\overline{uu_x}$')
+            ax[0,1].set_title(r'$\overline{vu_y}$')
+            ax[1,0].set_title(r'$\overline{wu_z}$')
+            ax[1,1].set_title(r'$g\overline{\zeta_x}$')
+            ax[2,0].set_title(r'$-f\overline{v}$')
+            ax[2,1].set_title('All forcing')
+        elif component == 'v':
+            ax[0,0].set_title(r'$\overline{uv_x}$')
+            ax[0,1].set_title(r'$\overline{vv_y}$')
+            ax[1,0].set_title(r'$\overline{wv_z}$')
+            ax[1,1].set_title(r'$g\overline{\zeta_y}$')
+            ax[2,0].set_title(r'$f\overline{u}$')
+            ax[2,1].set_title('All forcing')
 
-        plt.suptitle('Residual forcing mechanisms')
+        plt.suptitle(f'Residual forcing mechanisms for {component}')
         plt.tight_layout()
 
         if savename is not None:

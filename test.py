@@ -92,12 +92,7 @@ rho_sp = SpatialParameter(make_rho(rho0, beta), bfc)
 R_sp = SpatialParameter(R, bfc)
 ramp_sp = SpatialParameter(make_ramp(0, 0.1), bfc)
 
-# STEP 3: Define expansion bases ============================================================================
-
-vertical_basis = eigbasis_constantAv
-time_basis = unit_harmonic_time_basis
-
-# STEP 4 : Create Hydrodynamics object ======================================================================
+# STEP 3 : Create Hydrodynamics object ======================================================================
 
 # set options
 
@@ -114,7 +109,7 @@ model_options = select_model_options(bed_bc='no_slip',
 
 # create object
 
-hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis, vertical_basis, boundary_partition_dict=boundary_parameter_partition_dict, boundary_maxh_dict=boundary_maxh_dict, maxh_global=maxh_global, geometrycurves=geometrycurves)
+hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, boundary_partition_dict=boundary_parameter_partition_dict, boundary_maxh_dict=boundary_maxh_dict, maxh_global=maxh_global, geometrycurves=geometrycurves)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f, Ah=Ah)
 hydro.set_spatial_physical_parameters(H=H_sp, density=rho_sp, R=R_sp, nonlinear_ramp=ramp_sp)
 

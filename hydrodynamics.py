@@ -127,8 +127,7 @@ class Hydrodynamics(object):
     
     """
 
-    def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int, 
-                 time_basis:TruncationBasis.TruncationBasis, vertical_basis:TruncationBasis.TruncationBasis,
+    def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int,
                  boundary_partition_dict=None, boundary_maxh_dict=None, geometrycurves=None, maxh_global=None):
         
         self.mesh = mesh
@@ -137,8 +136,11 @@ class Hydrodynamics(object):
         self.M = M
         self.num_equations = (2*M+1)*(2*imax + 1)
         self.order = order
-        self.time_basis = time_basis
-        self.vertical_basis = vertical_basis
+        
+        self.time_basis = TruncationBasis.unit_harmonic_time_basis
+        if self.model_options['bed_bc'] == 'no_slip':
+            self.vertical_basis = TruncationBasis.eigbasis_constantAv
+        
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
 

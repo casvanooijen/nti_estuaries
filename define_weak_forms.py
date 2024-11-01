@@ -600,7 +600,7 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
     R = spatial_parameters['R'].cf
     Rx = spatial_parameters['R'].gradient_cf[0]
     Ry = spatial_parameters['R'].gradient_cf[1]
-    ramp = spatial_parameters['non-linear ramp'].cf
+    ramp = spatial_parameters['non-linear_ramp'].cf
 
     f = constant_parameters['f']
     g = constant_parameters['g']
@@ -1012,7 +1012,7 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
     R = spatial_parameters['R'].cf
     Rx = spatial_parameters['R'].gradient_cf[0]
     Ry = spatial_parameters['R'].gradient_cf[1]
-    ramp = spatial_parameters['non-linear ramp'].cf
+    ramp = spatial_parameters['non-linear_ramp'].cf
 
     f = constant_parameters['f']
     g = constant_parameters['g']

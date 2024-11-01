@@ -534,7 +534,7 @@ class Hydrodynamics(object):
         if R is not None:
             self.spatial_physical_parameters['R'] = R
         if nonlinear_ramp is not None:
-            self.spatial_physical_parameters['non-linear ramp'] = nonlinear_ramp
+            self.spatial_physical_parameters['non-linear_ramp'] = nonlinear_ramp
 
 
     def set_seaward_boundary_condition(self, amplitude_list, phase_list):

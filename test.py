@@ -105,7 +105,7 @@ model_options = select_model_options(bed_bc='no_slip',
 
 # create object
 
-hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, geometrycurves=geometrycurves)
+hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, geometrycurves=geometrycurves, maxh_global=maxh_global)
 hydro.set_constant_physical_parameters(Av=Av, sigma=sigma, g=g, f=f, Ah=Ah)
 hydro.set_spatial_physical_parameters(H=H_sp, density=rho_sp, R=R_sp, nonlinear_ramp=ramp_sp)
 

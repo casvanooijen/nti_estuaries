@@ -139,6 +139,8 @@ class Hydrodynamics(object):
         self.time_basis = truncationbasis.unit_harmonic_time_basis
         if self.model_options['bed_bc'] == 'no_slip':
             self.vertical_basis = truncationbasis.eigbasis_constantAv
+
+        # If a partial-slip boundary condition (bed_bc) is chosen, the basis depends on the parameters, and is hence initialised in the method set_constant_physical_parameters
         
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
@@ -508,12 +510,18 @@ class Hydrodynamics(object):
 
 
 
-    def set_constant_physical_parameters(self, Av=None, Ah=None, sigma=None, T=None, g=None, f=None):
+    def set_constant_physical_parameters(self, Av=None, Ah=None, sf = None, sigma=None, T=None, g=None, f=None):
         if Av is not None:
             self.constant_physical_parameters['Av'] = Av # vertical eddy viscosity or vertical eddy viscosity scale if it's assumed to scale linearly with local depth
 
         if Ah is not None:
             self.constant_physical_parameters['Ah'] = Ah # horizontal eddy viscosity; is unused if horizontal_diffusion = False in self.model_options
+
+        if sf is not None:
+            self.constant_physical_parameters['sf'] = sf
+
+        if self.model_options['bed_bc'] == 'partial_slip': # Can only be set after calling this method because the basis depends on the parameters
+            self.vertical_basis = truncationbasis.eigbasis_partialslip(self.M, sf, Av)
 
         if sigma is not None:
             self.constant_physical_parameters['sigma'] = sigma # M2-Frequency
@@ -764,6 +772,8 @@ def load_hydrodynamics(name, **kwargs):
     else:
         time_basis = truncationbasis.harmonic_time_basis(params['sigma'])
 
+    # The vertical basis is set automatically in case of a no-slip condition and at the end of this function in case of a partial-slip condition.
+
     # mesh
 
     # mesh = ngsolve.Mesh(f'{name}/mesh.vol')
@@ -821,6 +831,10 @@ def load_hydrodynamics(name, **kwargs):
 
     hydro.restructure_solution()
 
+    # set partial-slip basis in case necessary
+    if model_options['bed_bc'] == 'partial_slip':
+        hydro.vertical_basis = truncationbasis.eigbasis_partialslip(hydro.M, hydro.constant_physical_parameters['sf'], hydro.constant_physical_parameters['Av'])
+
     return hydro
 
 
@@ -836,6 +850,10 @@ class RiverineForcing(object):
 
         self.discharge_dict = dict() # Use a dictionary to enable negative indices
         self.Q_vec = dict() # vector (\int_0^T Q h_p dt), p = -imax, ..., imax
+
+        G3 = hydro.vertical_basis.tensor_dict['G3']
+        G4 = hydro.vertical_basis.tensor_dict['G4']
+
 
         # fill amplitude and phase lists with zeros for unfilled elements unless is_constant == True and create the vector Q_vec
 
@@ -860,13 +878,10 @@ class RiverineForcing(object):
         # Computation of normal components
 
         if is_constant and hydro.model_options['density'] == 'depth-independent':
-            d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
-            d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
+            d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * G4(k) for k in range(hydro.M)]
+            d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * G4(k) for k in range(hydro.M)]
 
-
-            C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi * np.pi * \
+            C = [-0.25 * (1/hydro.constant_physical_parameters['sigma']) * G3(k,k) *  \
                  (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
                     for k in range(hydro.M)]
             

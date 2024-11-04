@@ -613,7 +613,9 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
     G2 = vertical_basis.tensor_dict['G2']
     G3 = vertical_basis.tensor_dict['G3']
     G4 = vertical_basis.tensor_dict['G4']
-    G5 = vertical_basis.tensor_dict['G5']
+
+    vertical_innerproduct = vertical_basis.inner_product
+
     H3 = time_basis.tensor_dict['H3']
     H3_iszero = time_basis.tensor_dict['H3_iszero']
 
@@ -689,14 +691,14 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                                 ) * ngsolve.dx for n in range(M)]) for m in range(M)])
             
             # Coriolis
-            a += -0.25 * f * (H+R) * beta_trialfunctions[p][0] * umom_testfunctions[p][0] * ngsolve.dx
-            a += 0.25 * f * (H+R) * alpha_trialfunctions[p][0] * vmom_testfunctions[p][0] * ngsolve.dx
+            a += -0.5 * vertical_innerproduct(p, p) * f * (H+R) * beta_trialfunctions[p][0] * umom_testfunctions[p][0] * ngsolve.dx
+            a += 0.5 * vertical_innerproduct(p, p) * f * (H+R) * alpha_trialfunctions[p][0] * vmom_testfunctions[p][0] * ngsolve.dx
             # Barotropic pressure gradient
             a += 0.5 * (H+R) * g * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[0] * umom_testfunctions[p][0] / x_scaling * ngsolve.dx
             a += 0.5 * (H+R) * g * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[1] * vmom_testfunctions[p][0] / y_scaling * ngsolve.dx
             # Baroclinic pressure gradient
-            a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * umom_testfunctions[p][0] * rhox / rho * ngsolve.dx # assumes density is depth-independent
-            a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * vmom_testfunctions[p][0] * rhoy / rho * ngsolve.dx
+            a += (1/x_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * umom_testfunctions[p][0] * rhox / rho * ngsolve.dx # assumes density is depth-independent
+            a += (1/y_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * vmom_testfunctions[p][0] * rhoy / rho * ngsolve.dx
             # Vertical eddy viscosity
             if model_options['veddy_viscosity_assumption'] == 'constant':
                 a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] / (H+R) * ngsolve.dx# assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
@@ -705,11 +707,11 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                 a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] *ngsolve.dx# assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
                 a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][0] * vmom_testfunctions[p][0] * ngsolve.dx
             # Horizontal eddy viscosity
-            a += 0.25 * Ah * (
+            a += 0.5 * vertical_innerproduct(p, p) * Ah * (
                 ngsolve.grad(alpha_trialfunctions[p][0])[0] * ((H+R)*ngsolve.grad(umom_testfunctions[p][0])[0] / (x_scaling**2) + umom_testfunctions[p][0]*(Hx+Rx) / (x_scaling**2)) + \
                 ngsolve.grad(alpha_trialfunctions[p][0])[1] * ((H+R)*ngsolve.grad(umom_testfunctions[p][0])[1] / (y_scaling**2) + umom_testfunctions[p][0]*(Hy+Ry) / (y_scaling**2))
             ) * ngsolve.dx
-            a += 0.25 * Ah * (
+            a += 0.5 * vertical_innerproduct(p, p) * Ah * (
                 ngsolve.grad(beta_trialfunctions[p][0])[0] * ((H+R)*ngsolve.grad(vmom_testfunctions[p][0])[0] / (x_scaling**2) + vmom_testfunctions[p][0]*(Hx+Rx) / (x_scaling**2)) + \
                 ngsolve.grad(beta_trialfunctions[p][0])[1] * ((H+R)*ngsolve.grad(vmom_testfunctions[p][0])[1] / (y_scaling**2) + vmom_testfunctions[p][0]*(Hy+Ry) / (y_scaling**2))
             ) * ngsolve.dx
@@ -717,10 +719,10 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
             # Terms l != 0
             for l in range(1, imax + 1):
                 # Local acceleration
-                a += 0.5 * np.pi * l * (H+R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] * ngsolve.dx# factor 0.5 from vertical projection coefficient
-                a += 0.5 * np.pi * -l * (H+R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l] * ngsolve.dx
-                a += 0.5 * np.pi * l *  (H+R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] * ngsolve.dx # factor 0.5 from vertical projection coefficient
-                a += 0.5 * np.pi * -l *  (H+R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l] * ngsolve.dx
+                a += vertical_innerproduct(p, p) * np.pi * l * (H+R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] * ngsolve.dx# factor 0.5 from vertical projection coefficient
+                a += vertical_innerproduct(p, p) * np.pi * -l * (H+R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l] * ngsolve.dx
+                a += vertical_innerproduct(p, p) * np.pi * l *  (H+R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] * ngsolve.dx # factor 0.5 from vertical projection coefficient
+                a += vertical_innerproduct(p, p) * np.pi * -l *  (H+R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l] * ngsolve.dx
                 for i in range(-imax, imax + 1):
                     for j in range(-imax, imax + 1):
                         if H3_iszero(i,j,-l) and H3_iszero(i,j,l):
@@ -760,8 +762,8 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                                 ) * ngsolve.dx for n in range(M)]) for m in range(M)])
 
                 # Coriolis
-                a += -0.25 * f * (H+R) * beta_trialfunctions[p][-l] * umom_testfunctions[p][-l] * ngsolve.dx
-                a += 0.25 * f * (H+R) * alpha_trialfunctions[p][-l] * vmom_testfunctions[p][-l] * ngsolve.dx
+                a += -0.5 * vertical_innerproduct(p, p) * f * (H+R) * beta_trialfunctions[p][-l] * umom_testfunctions[p][-l] * ngsolve.dx
+                a += 0.5 * vertical_innerproduct(p, p) * f * (H+R) * alpha_trialfunctions[p][-l] * vmom_testfunctions[p][-l] * ngsolve.dx
                 # Barotropic pressure gradient
                 a += 0.5 * (H+R) * g * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[0] * umom_testfunctions[p][-l] / x_scaling * ngsolve.dx
                 a += 0.5 * (H+R) * g * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[1] * vmom_testfunctions[p][-l] / y_scaling * ngsolve.dx
@@ -773,18 +775,18 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                     a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] *ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
                     a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l] * ngsolve.dx
                 # Horizontal eddy viscosity
-                a += 0.25 * Ah * (
+                a += 0.5 * vertical_innerproduct(p, p) * Ah * (
                     ngsolve.grad(alpha_trialfunctions[p][-l])[0] * ((H+R)*ngsolve.grad(umom_testfunctions[p][-l])[0] / (x_scaling**2) + umom_testfunctions[p][-l]*(Hx+Rx) / (x_scaling**2)) + \
                     ngsolve.grad(alpha_trialfunctions[p][-l])[1] * ((H+R)*ngsolve.grad(umom_testfunctions[p][-l])[1] / (y_scaling**2) + umom_testfunctions[p][-l]*(Hy+Ry) / (y_scaling**2))
                 ) * ngsolve.dx
-                a += 0.25 * Ah * (
+                a += 0.5 * vertical_innerproduct(p, p) * Ah * (
                     ngsolve.grad(beta_trialfunctions[p][-l])[0] * ((H+R)*ngsolve.grad(vmom_testfunctions[p][-l])[0] / (x_scaling**2) + vmom_testfunctions[p][-l]*(Hx+Rx) / (x_scaling**2)) + \
                     ngsolve.grad(beta_trialfunctions[p][-l])[1] * ((H+R)*ngsolve.grad(vmom_testfunctions[p][-l])[1] / (y_scaling**2) + vmom_testfunctions[p][-l]*(Hy+Ry) / (y_scaling**2))
                 ) * ngsolve.dx
 
                 # Coriolis
-                a += -0.25 * f * (H+R) * beta_trialfunctions[p][l] * umom_testfunctions[p][l] * ngsolve.dx
-                a += 0.25 * f * (H+R) * alpha_trialfunctions[p][l] * vmom_testfunctions[p][l] * ngsolve.dx
+                a += -0.5 * vertical_innerproduct(p, p) * f * (H+R) * beta_trialfunctions[p][l] * umom_testfunctions[p][l] * ngsolve.dx
+                a += 0.5 * vertical_innerproduct(p, p) * f * (H+R) * alpha_trialfunctions[p][l] * vmom_testfunctions[p][l] * ngsolve.dx
                 # Barotropic pressure gradient
                 a += 0.5 * (H+R) * g * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[0] * umom_testfunctions[p][l] / x_scaling * ngsolve.dx
                 a += 0.5 * (H+R) * g * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[1] * vmom_testfunctions[p][l] / y_scaling * ngsolve.dx
@@ -796,11 +798,11 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                     a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] *ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
                     a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][l] * vmom_testfunctions[p][l] * ngsolve.dx
                 # Horizontal eddy viscosity
-                a += 0.25 * Ah * (
+                a += 0.5 * vertical_innerproduct(p, p) * Ah * (
                     ngsolve.grad(alpha_trialfunctions[p][l])[0] / (x_scaling**2) * ((H+R)*ngsolve.grad(umom_testfunctions[p][l])[0] + umom_testfunctions[p][l]*(Hx+Rx)) + \
                     ngsolve.grad(alpha_trialfunctions[p][l])[1] / (y_scaling**2) * ((H+R)*ngsolve.grad(umom_testfunctions[p][l])[1] + umom_testfunctions[p][l]*(Hy+Ry))
                 ) * ngsolve.dx
-                a += 0.25 * Ah * (
+                a += 0.5 * vertical_innerproduct(p, p) * Ah * (
                     ngsolve.grad(beta_trialfunctions[p][l])[0] / (x_scaling**2) * ((H+R)*ngsolve.grad(vmom_testfunctions[p][l])[0] + vmom_testfunctions[p][l]*(Hx+Rx)) + \
                     ngsolve.grad(beta_trialfunctions[p][l])[1] / (y_scaling**2) * ((H+R)*ngsolve.grad(vmom_testfunctions[p][l])[1] + vmom_testfunctions[p][l]*(Hy+Ry))
                 ) * ngsolve.dx
@@ -839,15 +841,15 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                                 a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)]) for n in range(0, M)]) # assumes outward normal at river boundary to be [1 0]
                                 a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,0) * vmom_testfunctions[p][0] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(0, M)]) for n in range(0, M)]) # assumes outward normal at sea boundary to be [-1 0]
                         
-            a += -0.25 * f * (H+R) * umom_testfunctions[p][0] * beta_trialfunctions[p][0] * ngsolve.dx
-            a += 0.25 * f * (H+R) * vmom_testfunctions[p][0] * alpha_trialfunctions[p][0] * ngsolve.dx
+            a += -0.5 * vertical_innerproduct(p, p) * f * (H+R) * umom_testfunctions[p][0] * beta_trialfunctions[p][0] * ngsolve.dx
+            a += 0.5 * vertical_innerproduct(p, p) * f * (H+R) * vmom_testfunctions[p][0] * alpha_trialfunctions[p][0] * ngsolve.dx
             # factor 0.25 is from the assumed projection coefficients H1 and G0
 
             a += 0.5 * g * (H+R) * umom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[0] / x_scaling * ngsolve.dx # assumes density is depth-independent
             a += 0.5 * g * (H+R) * vmom_testfunctions[p][0] * G4(p) * ngsolve.grad(gamma_trialfunctions[0])[1] / y_scaling * ngsolve.dx
 
-            a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * umom_testfunctions[p][0] * rhox / rho * ngsolve.dx# assumes density is depth-independent
-            a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * vmom_testfunctions[p][0] * rhoy / rho * ngsolve.dx
+            a += (1/x_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * umom_testfunctions[p][0] * rhox / rho * ngsolve.dx# assumes density is depth-independent
+            a += (1/y_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * vmom_testfunctions[p][0] * rhoy / rho * ngsolve.dx
 
             if model_options['veddy_viscosity_assumption'] == 'constant':
                 a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][0] * umom_testfunctions[p][0] / (H+R) * ngsolve.dx# assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
@@ -859,10 +861,10 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
             # terms l != 0
             for l in range(1, imax + 1):
 
-                a += 0.5 * np.pi * l * (H+R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] * ngsolve.dx# factor 0.5 from vertical projection coefficient
-                a += -0.5 * np.pi * l * (H+R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l] * ngsolve.dx
-                a += 0.5 * np.pi * l *  (H+R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] * ngsolve.dx # factor 0.5 from vertical projection coefficient
-                a += -0.5 * np.pi * l *  (H+R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l] * ngsolve.dx
+                a += vertical_innerproduct(p, p) * np.pi * l * (H+R) * sigma * umom_testfunctions[p][-l] * alpha_trialfunctions[p][l] * ngsolve.dx# factor 0.5 from vertical projection coefficient
+                a += -vertical_innerproduct(p, p) * np.pi * l * (H+R) * sigma * umom_testfunctions[p][l] * alpha_trialfunctions[p][-l] * ngsolve.dx
+                a += vertical_innerproduct(p, p) * np.pi * l *  (H+R) * sigma * vmom_testfunctions[p][-l] * beta_trialfunctions[p][l] * ngsolve.dx # factor 0.5 from vertical projection coefficient
+                a += -vertical_innerproduct(p, p) * np.pi * l *  (H+R) * sigma * vmom_testfunctions[p][l] * beta_trialfunctions[p][-l] * ngsolve.dx
 
                 if not only_linear:
                     for i in range(-imax, imax + 1):
@@ -922,15 +924,15 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                                     a += sum([sum([advection_epsilon * ramp * (H+R) * H3(i,j,l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * normalalpha[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)]) for n in range(0, M)]) # assumes outward normal at river boundary to be [1 0]
                                     a += sum([sum([advection_epsilon * ramp * -(H+R) * H3(i,j,l) * vmom_testfunctions[p][-l] * G2(m,n,p) * beta_trialfunctions[m][i] * alpha_trialfunctions[n][j] / x_scaling * ngsolve.ds(BOUNDARY_DICT[SEA]) for m in range(0, M)]) for n in range(0, M)]) # assumes outward normal at sea boundary to be [-1 0]
                 
-                a += -0.25 * f * (H+R) * umom_testfunctions[p][-l] * beta_trialfunctions[p][-l] * ngsolve.dx
-                a += 0.25 * f * (H+R) * vmom_testfunctions[p][-l] * alpha_trialfunctions[p][-l] * ngsolve.dx
+                a += -0.5 * vertical_innerproduct(p, p) * f * (H+R) * umom_testfunctions[p][-l] * beta_trialfunctions[p][-l] * ngsolve.dx
+                a += 0.5 * vertical_innerproduct(p, p) * f * (H+R) * vmom_testfunctions[p][-l] * alpha_trialfunctions[p][-l] * ngsolve.dx
                 # factor 0.25 is from the assumed projection coefficients H1 and G0
 
                 a += 0.5 * g * (H+R) * umom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[0] / x_scaling * ngsolve.dx # assumes density is depth-independent
                 a += 0.5 * g * (H+R) * vmom_testfunctions[p][-l] * G4(p) * ngsolve.grad(gamma_trialfunctions[-l])[1] / y_scaling * ngsolve.dx
 
-                a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * umom_testfunctions[p][-l] * rhox / rho * ngsolve.dx # assumes density is depth-independent
-                a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * vmom_testfunctions[p][-l] * rhoy / rho * ngsolve.dx
+                a += (1/x_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * umom_testfunctions[p][-l] * rhox / rho * ngsolve.dx # assumes density is depth-independent
+                a += (1/y_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * vmom_testfunctions[p][-l] * rhoy / rho * ngsolve.dx
 
                 if model_options['veddy_viscosity_assumption'] == 'constant':
                     a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] / (H+R) * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
@@ -939,15 +941,15 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
                     a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][-l] * umom_testfunctions[p][-l] * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
                     a += -0.5 * Av * G3(p, p) * beta_trialfunctions[p][-l] * vmom_testfunctions[p][-l] * ngsolve.dx
 
-                a += -0.25 * f * (H+R) * umom_testfunctions[p][l] * beta_trialfunctions[p][l] * ngsolve.dx
-                a += 0.25 * f * (H+R) * vmom_testfunctions[p][l] * alpha_trialfunctions[p][l] * ngsolve.dx
+                a += -0.5 * vertical_innerproduct(p, p) * f * (H+R) * umom_testfunctions[p][l] * beta_trialfunctions[p][l] * ngsolve.dx
+                a += 0.5 * vertical_innerproduct(p, p) * f * (H+R) * vmom_testfunctions[p][l] * alpha_trialfunctions[p][l] * ngsolve.dx
                 # factor 0.25 is from the assumed projection coefficients H1 and G0
 
                 a += 0.5 * g * (H+R) * umom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[0] / x_scaling * ngsolve.dx # assumes density is depth-independent
                 a += 0.5 * g * (H+R) * vmom_testfunctions[p][l] * G4(p) * ngsolve.grad(gamma_trialfunctions[l])[1] / y_scaling * ngsolve.dx
 
-                a += (1/x_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * umom_testfunctions[p][l] * rhox / rho * ngsolve.dx # assumes density is depth-independent
-                a += (1/y_scaling) * 0.5 * np.sqrt(2) * G5(p) * (H+R) * (H+R) * vmom_testfunctions[p][l] * rhoy / rho * ngsolve.dx
+                a += (1/x_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * umom_testfunctions[p][l] * rhox / rho * ngsolve.dx # assumes density is depth-independent
+                a += (1/y_scaling) * 0.5 * np.sqrt(2) * G4(p) * (H+R) * (H+R) * vmom_testfunctions[p][l] * rhoy / rho * ngsolve.dx
 
                 if model_options['veddy_viscosity_assumption'] == 'constant':
                     a += -0.5 * Av * G3(p, p) * alpha_trialfunctions[p][l] * umom_testfunctions[p][l] / (H+R) * ngsolve.dx # assumes that vertical basis consists of eigenfunctions of the vertical mixing operator
@@ -1026,7 +1028,6 @@ def add_linearised_nonlinear_terms(a: ngsolve.BilinearForm, model_options: dict,
     G2 = vertical_basis.tensor_dict['G2']
     G3 = vertical_basis.tensor_dict['G3']
     G4 = vertical_basis.tensor_dict['G4']
-    G5 = vertical_basis.tensor_dict['G5']
     H3 = time_basis.tensor_dict['H3']
     H3_iszero = time_basis.tensor_dict['H3_iszero']
 

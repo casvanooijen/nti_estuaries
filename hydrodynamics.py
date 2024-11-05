@@ -457,7 +457,7 @@ class Hydrodynamics(object):
             json.dump(self.boundary_maxh_dict, f_maxhdict)
 
         with open(f'{name}/geometry/geometrycurves.pkl', 'wb') as f_geomcurves:
-            dill.dump(self.geometrycurves, f_geomcurves)
+            dill.dump(self.geometrycurves, f_geomcurves, protocol=4) # use protocol=4 which is compatible with cross-platform use to enable remote parallel computing
 
         # spatial parameters
 
@@ -465,7 +465,7 @@ class Hydrodynamics(object):
 
         for paramname, value in self.spatial_physical_parameters.items():
             with open(f'{name}/spatial_parameters/{paramname}.pkl', 'wb') as file:
-                dill.dump(value.fh, file, protocol=dill.HIGHEST_PROTOCOL)
+                dill.dump(value.fh, file, protocol=4)
 
         # solution
 
@@ -782,7 +782,7 @@ def load_hydrodynamics(name, **kwargs):
     #     mesh = dill.load(file)
 
     with open(f'{name}/geometry/geometrycurves.pkl', 'rb') as f_geomcurves:
-        geometrycurves = dill.load(f_geomcurves)
+        geometrycurves = dill.load(f_geomcurves, protocol=4)
 
     with open(f'{name}/geometry/boundary_partition_dict.json', 'rb') as f_partdict:
         boundary_partition_dict = json.load(f_partdict)
@@ -807,7 +807,7 @@ def load_hydrodynamics(name, **kwargs):
         filename = os.fsdecode(param)
         param_name = filename[:-4] # ignore file extension
         with open(f'{name}/spatial_parameters/{param_name}.pkl', 'rb') as file:
-            param_fh = dill.load(file)
+            param_fh = dill.load(file, protocol=4)
 
         hydro.spatial_physical_parameters[param_name] = SpatialParameter(param_fh, bfc)
 

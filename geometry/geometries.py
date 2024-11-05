@@ -82,16 +82,16 @@ def parametric_rectangle(B, L):
         return p1 + (p2 - p1) * t
     
 
-    def top(t):
+    def top(t, L=L, B=B): # added L and B as arguments for this function to make sure that these functions do not rely on external context; that might become an issue in pickling/unpickling from remote computers
         return linearly_connect(t, np.array([L, B/2]), np.array([0, B/2]))
     
-    def bottom(t):
+    def bottom(t, L=L, B=B):
         return linearly_connect(t, np.array([0, -B/2]), np.array([L,-B/2]))
     
-    def leftside(t):
+    def leftside(t, L=L, B=B):
         return linearly_connect(t, np.array([0, B/2]), np.array([0, -B/2]))
     
-    def rightside(t):
+    def rightside(t, L=L, B=B):
         return linearly_connect(t, np.array([L, -B/2]), np.array([L, B/2]))
     
     geometrycurves = [[bottom, WALLDOWN], [top, WALLUP], [leftside, SEA], [rightside, RIVER]]

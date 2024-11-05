@@ -782,7 +782,7 @@ def load_hydrodynamics(name, **kwargs):
     #     mesh = dill.load(file)
 
     with open(f'{name}/geometry/geometrycurves.pkl', 'rb') as f_geomcurves:
-        geometrycurves = dill.load(f_geomcurves, protocol=4)
+        geometrycurves = dill.load(f_geomcurves)
 
     with open(f'{name}/geometry/boundary_partition_dict.json', 'rb') as f_partdict:
         boundary_partition_dict = json.load(f_partdict)
@@ -807,7 +807,7 @@ def load_hydrodynamics(name, **kwargs):
         filename = os.fsdecode(param)
         param_name = filename[:-4] # ignore file extension
         with open(f'{name}/spatial_parameters/{param_name}.pkl', 'rb') as file:
-            param_fh = dill.load(file, protocol=4)
+            param_fh = dill.load(file)
 
         hydro.spatial_physical_parameters[param_name] = SpatialParameter(param_fh, bfc)
 

@@ -5,6 +5,8 @@ import timeit
 import ngsolve
 import copy
 import matplotlib.pyplot as plt
+import mkl
+import multiprocessing
 import pypardiso
 
 from hydrodynamics import *
@@ -44,10 +46,14 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         num_continuation_steps = len(continuation_parameters['advection_epsilon'])
     else:
         raise ValueError(f"Length of both continuation parameter lists must be equal; now the lenghts are {len(continuation_parameters['advection_epsilon'])} and {len(continuation_parameters['Av'])}")
-    
+
     # Report that solution procedure is about to start.
 
     print(f"Initiating solution procedure for hydrodynamics-model with {hydro.M} vertical components and {hydro.imax + 1} tidal constituents (including residual).\nIn total, there are {(2*hydro.M+1)*(2*hydro.imax+1)} equations. The total number of free degrees of freedom is {hydro.nfreedofs}.")
+
+    # set number of threads
+    num_available_cores = multiprocessing.cpu_count()
+    mkl.set_num_threads(num_available_cores)
 
     # Set initial guess
     sol = ngsolve.GridFunction(hydro.femspace)

@@ -5,6 +5,7 @@ import timeit
 import ngsolve
 import copy
 import matplotlib.pyplot as plt
+import pypardiso
 
 from hydrodynamics import *
 import define_weak_forms as weakforms
@@ -28,7 +29,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - hydro (Hydrodynamics):            object containing the (weak) model equations and options;
         - max_iterations (int):             maximum number of Newton iterations per continuation step;
         - tolerance (float):                if the stopping criterion is less than this value, the Newton method terminates and the procedure moves to the next continuation step;
-        - linear_solver:                    choice of linear solver; options: 'pardiso', 'scipy_direct', 'bicgstab'
+        - linear_solver:                    choice of linear solver; options: 'pardiso', 'pypardiso', 'scipy_direct', 'bicgstab'
         - continuation_parameters (dict):   dictionary with keys 'advection_epsilon' and 'Av', with values indicating what the default value of these parameters should be multiplied by in each continuation step;
         - stopcriterion:                    choice of stopping criterion; options: 'matrix_norm', 'scaled_2norm', 'relative_newtonstepsize';
         - reduced_hydro (Hydrodynamics):    reduced version of the hydrodynamics object that can be used as a preconditioner for iterative solvers; Note: M and imax must be identical
@@ -172,6 +173,13 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 rhs_arr = rhs.FV().NumPy()[freedof_list]
 
                 sol = spsolve(mat, rhs_arr)
+                du.vec.FV().NumPy()[freedof_list] = sol
+            elif linear_solver == 'pypardiso':
+                freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
+                mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
+                rhs_arr = rhs.FV().NumPy()[freedof_list]
+
+                sol = pypardiso.spsolve(mat, rhs_arr) # does parallel computation automatically????
                 du.vec.FV().NumPy()[freedof_list] = sol
             elif linear_solver == 'bicgstab':
                 freedof_list = get_freedof_list(hydro.femspace.FreeDofs())

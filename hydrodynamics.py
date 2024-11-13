@@ -45,7 +45,8 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 
 def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', horizontal_diffusion: bool = True, density:str = 'depth-independent',
-                 advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1, mesh_generation_method='unstructured'):
+                 advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1, mesh_generation_method='unstructured',
+                 taylor_hood:bool = True):
     
     """
     
@@ -66,6 +67,7 @@ def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, v
         - x_scaling (float):                        factor [m] by which the input geometry should be scaled in the x-direction; this variable adds scaling factors in the equations to compensate for this; default = 1
         - y_scaling (float):                        factor [m] by which the input geometry should be scaled in the y-direction; default = 1;
         - mesh_generation_method (str):             method by which the mesh is generated ('unstructured', 'structured_quads', 'structured_tri', 'manual');
+        - taylor_hood (bool):                       flag to indicate whether Taylor-Hood elements should be used (where the free surface is solved an order lower than the velocity field)
         
         """
     
@@ -82,7 +84,8 @@ def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, v
             'advection_influence_matrix': advection_influence_matrix, # the validity of this matrix is checked when imax is know, i.e. when the hydrodynamics object is initialised
             'x_scaling': x_scaling,
             'y_scaling': y_scaling,
-            'mesh_generation_method': mesh_generation_method
+            'mesh_generation_method': mesh_generation_method,
+            'taylor_hood': taylor_hood 
         }
     
 
@@ -206,7 +209,10 @@ class Hydrodynamics(object):
         if self.model_options['horizontal_diffusion']: # These boundary conditions assume a rectangular estuary with seaward boundary at x=0 and river boundary at x=L
             U = ngsolve.H1(self.mesh, order=self.order, dirichlet=f"{BOUNDARY_DICT[RIVER]}") 
             V = ngsolve.H1(self.mesh, order=self.order, dirichlet=f"{BOUNDARY_DICT[WALLUP]}|{BOUNDARY_DICT[WALLDOWN]}")
-            Z = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
+            if self.model_options['taylor_hood']:
+                Z = ngsolve.H1(self.mesh, order=self.order - 1, dirichlet=BOUNDARY_DICT[SEA])
+            else:
+                Z = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
             
             list_of_spaces = [U for _ in range(self.M*(2*self.imax + 1))]
             for _ in range(self.M*(2*self.imax + 1)):
@@ -218,7 +224,10 @@ class Hydrodynamics(object):
             self.femspace = X
         else:
             U = ngsolve.H1(self.mesh, order=self.order) 
-            G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
+            if self.model_options['taylor_hood']:
+                G = ngsolve.H1(self.mesh, order=self.order - 1, dirichlet=BOUNDARY_DICT[SEA])
+            else:
+                G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
 
             list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
             for _ in range(2*self.imax+1):

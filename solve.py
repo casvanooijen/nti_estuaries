@@ -53,6 +53,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
     # set number of threads
     num_available_cores = multiprocessing.cpu_count()
+    print(num_available_cores)
     mkl.set_num_threads(num_available_cores)
 
     # Set initial guess

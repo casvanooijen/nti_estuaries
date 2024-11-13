@@ -45,7 +45,7 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 
 def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', horizontal_diffusion: bool = True, density:str = 'depth-independent',
-                 advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1):
+                 advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1, mesh_generation_method='unstructured'):
     
     """
     
@@ -64,7 +64,8 @@ def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, v
                                                     more precisely, in the equations for constituent i, any product of constituents that includes constituent j will not be present in the advective terms
                                                     if element (i, j) is False, even if that product *should* physically be present;    
         - x_scaling (float):                        factor [m] by which the input geometry should be scaled in the x-direction; this variable adds scaling factors in the equations to compensate for this; default = 1
-        - y_scaling (float):                        factor [m] by which the input geometry should be scaled in the y-direction; default = 1
+        - y_scaling (float):                        factor [m] by which the input geometry should be scaled in the y-direction; default = 1;
+        - mesh_generation_method (str):             method by which the mesh is generated ('unstructured', 'structured_quads', 'structured_tri', 'manual');
         
         """
     
@@ -80,7 +81,8 @@ def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, v
             'advection_epsilon': advection_epsilon,
             'advection_influence_matrix': advection_influence_matrix, # the validity of this matrix is checked when imax is know, i.e. when the hydrodynamics object is initialised
             'x_scaling': x_scaling,
-            'y_scaling': y_scaling
+            'y_scaling': y_scaling,
+            'mesh_generation_method': mesh_generation_method
         }
     
 
@@ -168,7 +170,6 @@ class Hydrodynamics(object):
         elif self.model_options['advection_influence_matrix'].dtype != bool:
             raise ValueError(f"Invalid advection influence matrix, please provide a *boolean* matrix")
         
-        # self.mesh.ngmesh.SetGeometry(None) # This step is necessary to make sure the solution can be saved and loaded correctly, see https://forum.ngsolve.org/t/dofs-of-higher-order-1-basis-functions-being-ordered-differently/3061
 
 
         self._setup_fem_space()

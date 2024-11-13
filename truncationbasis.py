@@ -29,7 +29,7 @@ class TruncationBasis(object):
     Methods:
     
     - plot:                     plots a number of basis functions.
-    - add_analytical_integrals  adds a number of functions that return
+    - add_analytical_tensors    adds a number of functions that return analytical expressions for various inner product between basis functions and their derivatives/integrals
 
     # DO NOT YET WORK
 
@@ -636,10 +636,6 @@ class Projection(object):
     
 # Example
     
-if __name__ == '__main__':
-
-    eigvals = eigbasis_partialslip(20, 10, 0.01)
-    print(eigvals * np.tan(eigvals) - 10/0.01 * np.ones_like(eigvals))
 
 
     

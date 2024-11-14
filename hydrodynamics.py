@@ -132,7 +132,7 @@ class Hydrodynamics(object):
     """
 
     def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int,
-                 boundary_partition_dict=None, boundary_maxh_dict=None, geometrycurves=None, maxh_global=None):
+                 boundary_partition_dict=None, boundary_maxh_dict=None, geometrycurves=None, maxh_global=None, num_els=None):
         
         self.mesh = mesh
         self.model_options = model_options
@@ -150,8 +150,18 @@ class Hydrodynamics(object):
         self.constant_physical_parameters = dict()
         self.spatial_physical_parameters = dict()
 
-        self.geometrycurves = geometrycurves
-        self.maxh = maxh_global
+        if geometrycurves is not None:
+            self.geometrycurves = geometrycurves
+        else:
+            raise ValueError("Please submit geometrycurves to hydrodynamics object.")
+        
+        if maxh_global is not None and num_els is None:
+            self.maxh = maxh_global
+        elif maxh_global is None and num_els is not None:
+            self.num_els = num_els
+            self.maxh = max(1/num_els[0], 1/num_els[1])
+        else:
+            raise ValueError("Please submit either maxh_global (unstructured mesh) or num_els (structured mesh); not both")
 
         if boundary_partition_dict is None:
             self.boundary_partition_dict = {RIVER:[0,1],SEA:[0,1],WALLUP:[0,1],WALLDOWN:[0,1]}

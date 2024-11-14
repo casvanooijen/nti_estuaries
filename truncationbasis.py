@@ -246,12 +246,18 @@ def eigbasis_partialslip(M: int, sf: float, Av: float, tol=1e-12, maxits=10):
             np.sin(root_eigvals[m] + root_eigvals[n] + root_eigvals[k]) / (root_eigvals[m] + root_eigvals[n] + root_eigvals[k]) - \
             np.sin(root_eigvals[m] + root_eigvals[n] - root_eigvals[k]) / (root_eigvals[m] + root_eigvals[n] - root_eigvals[k])
         )
-        term2 = 0.5 * np.sin(root_eigvals[n]) * (
-            np.cos(root_eigvals[m] + root_eigvals[k]) / (root_eigvals[m] + root_eigvals[k]) + \
-            np.cos(root_eigvals[m] - root_eigvals[k]) / (root_eigvals[m] - root_eigvals[k]) - \
-            1 / (root_eigvals[m] + root_eigvals[k]) - \
-            1 / (root_eigvals[m] - root_eigvals[k])
-        )
+        if m != k:
+            term2 = 0.5 * np.sin(root_eigvals[n]) * (
+                np.cos(root_eigvals[m] + root_eigvals[k]) / (root_eigvals[m] + root_eigvals[k]) + \
+                np.cos(root_eigvals[m] - root_eigvals[k]) / (root_eigvals[m] - root_eigvals[k]) - \
+                1 / (root_eigvals[m] + root_eigvals[k]) - \
+                1 / (root_eigvals[m] - root_eigvals[k])
+            )
+        else:
+            term2 = 0.5 * np.sin(root_eigvals[n]) * (
+                np.cos(root_eigvals[m] + root_eigvals[k]) / (root_eigvals[m] + root_eigvals[k]) - \
+                1 / (root_eigvals[m] + root_eigvals[k])
+            )
         return -(root_eigvals[m]/root_eigvals[n]) * (term1 + term2)
 
     def analytical_G3(m, k):

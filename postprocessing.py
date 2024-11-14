@@ -117,7 +117,12 @@ class PostProcessing(object):
         self.gamma_abs = lambda q: ngsolve.sqrt(self.gamma(q)*self.gamma(q)) if q == 0 else ngsolve.sqrt(self.gamma(q)*self.gamma(q)+self.gamma(-q)*self.gamma(-q))
 
         self.u_DA = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.alpha_solution[m][q] for m in range(hydro.M)])
+        self.u_DA_x = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.alpha_solution[m][q])[0] for m in range(hydro.M)])
+        self.u_DA_y = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.alpha_solution[m][q])[1] for m in range(hydro.M)])
+
         self.v_DA = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * hydro.beta_solution[m][q] for m in range(hydro.M)])
+        self.v_DA_x = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.beta_solution[m][q])[0] for m in range(hydro.M)])
+        self.v_DA_y = lambda q: sum([hydro.vertical_basis.tensor_dict['G4'](m) * ngsolve.grad(hydro.beta_solution[m][q])[1] for m in range(hydro.M)])
 
         self.u_timed = lambda t, sigma: sum([sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax+1)])
         self.v_timed = lambda t, sigma: sum([sum([hydro.beta_solution[m][q] * hydro.vertical_basis.evaluation_function(sigma, m) * hydro.time_basis.evaluation_function(t, q) for m in range(hydro.M)]) for q in range(-hydro.imax, hydro.imax + 1)])
@@ -156,8 +161,8 @@ class PostProcessing(object):
         self.gamma_phase = lambda q: ngsolve.atan2(-self.gamma(-q), self.gamma(q))
 
         
-        self.u_DA_abs = lambda q: ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) if q == 0 else ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) + self.u_DA(-q)*self.u_DA(-q)))
-        self.v_DA_abs = lambda q: ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) if q == 0 else ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) + self.v_DA(-q)*self.v_DA(-q)))
+        self.u_DA_abs = lambda q: ngsolve.sqrt(self.u_DA(q)*self.u_DA(q)) if q == 0 else ngsolve.sqrt(self.u_DA(q)*self.u_DA(q) + self.u_DA(-q)*self.u_DA(-q))
+        self.v_DA_abs = lambda q: ngsolve.sqrt(self.v_DA(q)*self.v_DA(q)) if q == 0 else ngsolve.sqrt(self.v_DA(q)*self.v_DA(q) + self.v_DA(-q)*self.v_DA(-q))
 
         self.u_DA_phase = lambda q: ngsolve.atan2(-self.u_DA(-q), self.u_DA(q))
         self.v_DA_phase = lambda q: ngsolve.atan2(-self.v_DA(-q), self.v_DA(q))
@@ -170,7 +175,7 @@ class PostProcessing(object):
 
         self.uy = lambda q, sigma : sum([ngsolve.grad(hydro.alpha_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)]) / y_scaling
         self.vy = lambda q, sigma : sum([ngsolve.grad(hydro.beta_solution[m][q])[1] * hydro.vertical_basis.evaluation_function(sigma, m) for m in range(hydro.M)]) / y_scaling
-        self.gammay = lambda q: ngsolve.grad(hydro.gamma_solution[q])[0] / y_scaling
+        self.gammay = lambda q: ngsolve.grad(hydro.gamma_solution[q])[1] / y_scaling
 
         self.usig = lambda q, sigma : sum([hydro.alpha_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #This is the derivative w.r.t. sigma, and not z. To transform this to the derivative w.r.t. z, divide by H
         self.vsig = lambda q, sigma : sum([hydro.beta_solution[m][q] * hydro.vertical_basis.derivative_evaluation_function(sigma, m) for m in range(hydro.M)]) #same

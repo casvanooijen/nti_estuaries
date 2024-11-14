@@ -1,7 +1,7 @@
 import ngsolve
 from netgen.meshing import Element0D, Element1D, Element2D, MeshPoint, FaceDescriptor, Mesh
 from netgen.csg import Pnt
-from create_geometry import BOUNDARY_DICT, SEA, WALLUP, WALLDOWN, RIVER
+from geometry.create_geometry import BOUNDARY_DICT, SEA, WALLUP, WALLDOWN, RIVER
 
 
 def generate_mesh(geometry, method='unstructured', maxh_unstructured=None, num_els_x=None, num_els_y=None):
@@ -29,9 +29,8 @@ def generate_mesh(geometry, method='unstructured', maxh_unstructured=None, num_e
             raise ValueError("Could not generate structured mesh: number of elements in at least one direction not provided.")
         
         # initialisation
-        mesh = ngsolve.Mesh()
+        mesh = Mesh(dim = 2)
         mesh.SetGeometry(geometry)
-        mesh.dim = 2
 
         # add mesh points
         meshpoints = []
@@ -40,27 +39,29 @@ def generate_mesh(geometry, method='unstructured', maxh_unstructured=None, num_e
                 meshpoints.append(mesh.Add(MeshPoint(Pnt(i / num_els_x, j / num_els_y - 0.5, 0)))) # the unit square geometry is centered at y = 0, x = 0.5
 
         # add interior elements
-        mesh.SetMaterial(1, 'all')
-        for j in range(num_els_y):
-            for i in range(num_els_x):
-                mesh.Add(Element2D(1, [meshpoints[i + j * (num_els_y+1)], meshpoints[i + (j+1)*(num_els_y+1)], meshpoints[i+1 + (j+1)*(num_els_y+1)], meshpoints[i+1 + j*(num_els_y+1)]]))
+        interior = mesh.AddRegion('interior', 2)
+        # surf = mesh.Add(FaceDescriptor(surfnr=1, domin=1, bc=0))
+        for i in range(num_els_y):
+            for j in range(num_els_x):
+                mesh.Add(Element2D(interior, [meshpoints[i + j * (num_els_y+1)], meshpoints[i + (j+1)*(num_els_y+1)], meshpoints[i+1 + (j+1)*(num_els_y+1)], meshpoints[i+1 + j*(num_els_y+1)]]))
 
         # add boundary elements
-        mesh.Add(FaceDescriptor(surfnr=1, domin=1, bc=BOUNDARY_DICT[SEA]))
+        # seabc = mesh.Add(FaceDescriptor(surfnr=1, domin=1, bc=SEA))
+        sea_bnd = mesh.AddRegion(BOUNDARY_DICT[SEA], 1)
         for j in range(num_els_y):
-            mesh.Add(Element1D([meshpoints[j], meshpoints[j+1]], index=BOUNDARY_DICT[SEA]))
+            mesh.Add(Element1D([meshpoints[j], meshpoints[j+1]], index=sea_bnd))
 
-        mesh.Add(FaceDescriptor(surfnr=1, domin=1, bc=BOUNDARY_DICT[WALLUP]))
+        wallup_bnd = mesh.AddRegion(BOUNDARY_DICT[WALLUP], 1)
         for i in range(num_els_x):
-            mesh.Add(Element1D([meshpoints[num_els_y + (num_els_y + 1) * i], meshpoints[num_els_y + (num_els_y + 1) * (i+1)]], index=BOUNDARY_DICT[WALLUP]))
+            mesh.Add(Element1D([meshpoints[num_els_y + (num_els_y + 1) * i], meshpoints[num_els_y + (num_els_y + 1) * (i+1)]], index=wallup_bnd))
 
-        mesh.Add(FaceDescriptor(surfnr=1, domin=1, bc=BOUNDARY_DICT[RIVER]))
+        river_bnd = mesh.AddRegion(BOUNDARY_DICT[RIVER], 1)
         for j in range(num_els_y):
-            mesh.Add(Element1D([meshpoints[num_els_x * (num_els_y + 1) + j], meshpoints[num_els_x * (num_els_y + 1) + j + 1]], index=BOUNDARY_DICT[RIVER]))
+            mesh.Add(Element1D([meshpoints[num_els_x * (num_els_y + 1) + j], meshpoints[num_els_x * (num_els_y + 1) + j + 1]], index=river_bnd))
 
-        mesh.Add(FaceDescriptor(surfnr=1, domin=1, bc=BOUNDARY_DICT[WALLDOWN]))
+        walldown_bnd = mesh.AddRegion(BOUNDARY_DICT[WALLDOWN], 1)
         for i in range(num_els_x):
-            mesh.Add(Element1D([meshpoints[(num_els_y + 1) * i], meshpoints[((num_els_y + 1) * (i+1))]], index=BOUNDARY_DICT[WALLDOWN]))
+            mesh.Add(Element1D([meshpoints[(num_els_y + 1) * i], meshpoints[((num_els_y + 1) * (i+1))]], index=walldown_bnd))
 
         return mesh
     elif method == 'structured_tri':

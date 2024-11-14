@@ -202,28 +202,59 @@ class PostProcessing(object):
         
     def plot_colormap(self, quantity, refinement_level=1, show_mesh=False, title='Colormap', clabel='Color', center_range = False, contourlines=True, num_levels=10, subamplitude_lines=2, save=None, figsize=(12, 6), **kwargs):
         """"""
-        triangulation = get_triangulation(self.hydro.mesh.ngmesh)
-        refiner = tri.UniformTriRefiner(triangulation)
-        refined_triangulation = refiner.refine_triangulation(subdiv=refinement_level)
-        
-        eval_gfu = evaluate_CF_range(quantity, self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
-        if center_range:
-            maxamp = max(np.amax(eval_gfu), -np.amin(eval_gfu))
-        fig_colormap, ax_colormap = plt.subplots(figsize=figsize)
-        if show_mesh:
-            ax_colormap.triplot(triangulation, linewidth=0.5, color='k', zorder=2)
-        if center_range:
-            colormesh = ax_colormap.tripcolor(refined_triangulation, eval_gfu, vmin=-maxamp, vmax=maxamp, **kwargs)
-        else:
-            colormesh = ax_colormap.tripcolor(refined_triangulation, eval_gfu, **kwargs)
 
-        if contourlines:
-            try:
-                levels = np.linspace(np.min(eval_gfu), np.max(eval_gfu), num_levels*(subamplitude_lines+1))
-                contour = ax_colormap.tricontour(refined_triangulation, eval_gfu, levels, colors=['k'] + ["0.4"] * subamplitude_lines, linewidths=[.5] * (1+subamplitude_lines))
-                ax_colormap.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
-            except ValueError:
-                print("Constant solution; plotting contour lines impossible")
+        if self.hydro.model_options['mesh_generation_method'] != 'structured_quads':
+            triangulation = get_triangulation(self.hydro.mesh.ngmesh)
+            refiner = tri.UniformTriRefiner(triangulation)
+            refined_triangulation = refiner.refine_triangulation(subdiv=refinement_level)
+            
+            eval_gfu = evaluate_CF_range(quantity, self.hydro.mesh, refined_triangulation.x, refined_triangulation.y)
+            if center_range:
+                maxamp = max(np.amax(eval_gfu), -np.amin(eval_gfu))
+            fig_colormap, ax_colormap = plt.subplots(figsize=figsize)
+            if show_mesh:
+                ax_colormap.triplot(triangulation, linewidth=0.5, color='k', zorder=2)
+            if center_range:
+                colormesh = ax_colormap.tripcolor(refined_triangulation, eval_gfu, vmin=-maxamp, vmax=maxamp, **kwargs)
+            else:
+                colormesh = ax_colormap.tripcolor(refined_triangulation, eval_gfu, **kwargs)
+
+            if contourlines:
+                try:
+                    levels = np.linspace(np.min(eval_gfu), np.max(eval_gfu), num_levels*(subamplitude_lines+1))
+                    contour = ax_colormap.tricontour(refined_triangulation, eval_gfu, levels, colors=['k'] + ["0.4"] * subamplitude_lines, linewidths=[.5] * (1+subamplitude_lines))
+                    ax_colormap.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
+                except ValueError:
+                    print("Constant solution; plotting contour lines impossible")
+        else:
+            x = np.linspace(0, 1, self.hydro.num_els[0] * (refinement_level + 1) + 1)
+            y = np.linspace(-0.5, 0.5, self.hydro.num_els[1] * (refinement_level + 1) + 1)
+            X, Y = np.meshgrid(x, y, indexing='ij')
+            Q = np.zeros_like(X)
+
+            for i in range(Q.shape[1]):
+                Q[:, i] = evaluate_CF_range(quantity, self.hydro.mesh, x, y[i] * np.ones_like(x))
+
+            if center_range:
+                maxamp = np.amax(np.absolute(Q.flatten()))
+                
+            fig_colormap, ax_colormap = plt.subplots(figsize=figsize)
+
+            if show_mesh:
+                print('Showing mesh in structured quadrilateral meshes not implemented yet')
+
+            if center_range:
+                colormesh = ax_colormap.pcolormesh(X, Y, Q, vmin=-maxamp, vmax=maxamp, **kwargs)
+            else:
+                colormesh = ax_colormap.pcolormesh(X, Y, Q, **kwargs)
+            
+            if contourlines:
+                try:
+                    levels = np.linspace(np.amin(Q.flatten()), np.amax(Q.flatten()), num_levels*(subamplitude_lines+1))
+                    contour = ax_colormap.contour(X, Y, Q, levels, colors=['k'] + ["0.4"] * subamplitude_lines, linewidths=[.5] * (1+subamplitude_lines))
+                    ax_colormap.clabel(contour, levels[0::subamplitude_lines+1], inline=1, fontsize=10, fmt='%1.4f')
+                except ValueError:
+                    print("Constant solution; plotting contour lines impossible")
 
         ax_colormap.set_title(title)
         cbar = fig_colormap.colorbar(colormesh)

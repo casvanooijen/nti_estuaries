@@ -194,15 +194,27 @@ class PostProcessing(object):
 
     ## PLOTTING ##
         
-    def plot_mesh2d(self, title=None, **kwargs):
-        coords = mesh_to_coordinate_array(self.hydro.mesh.ngmesh)
-        triangles = mesh2d_to_triangles(self.hydro.mesh.ngmesh)
-        triangulation = tri.Triangulation(coords[:, 0], coords[:, 1], triangles)
+    def plot_mesh2d(self, title=None, save=None, **kwargs):
+        if self.hydro.model_options['mesh_generation_method'] != 'structured_quads':
+            coords = mesh_to_coordinate_array(self.hydro.mesh.ngmesh)
+            triangles = mesh2d_to_triangles(self.hydro.mesh.ngmesh)
+            triangulation = tri.Triangulation(coords[:, 0], coords[:, 1], triangles)
 
-        fig_mesh, ax_mesh = plt.subplots()
-        ax_mesh.triplot(triangulation, **kwargs)
+            fig_mesh, ax_mesh = plt.subplots()
+            ax_mesh.triplot(triangulation, **kwargs)
+        else:
+            x = np.linspace(0, 1, self.hydro.num_els[0] + 1)
+            y = np.linspace(-0.5, 0.5, self.hydro.num_els[1] + 1)
+
+            fig_mesh, ax_mesh = plt.subplots()
+            ax_mesh.hlines(y, xmin=0, xmax=1, **kwargs)
+            ax_mesh.vlines(x, ymin=-0.5, ymax=0.5, **kwargs)
+
         if title:
             ax_mesh.set_title(title)
+
+        if save:
+            fig_mesh.savefig(save)
     
         
     def plot_colormap(self, quantity, refinement_level=1, show_mesh=False, title='Colormap', clabel='Color', center_range = False, contourlines=True, num_levels=10, subamplitude_lines=2, save=None, figsize=(12, 6), **kwargs):
@@ -246,7 +258,10 @@ class PostProcessing(object):
             fig_colormap, ax_colormap = plt.subplots(figsize=figsize)
 
             if show_mesh:
-                print('Showing mesh in structured quadrilateral meshes not implemented yet')
+                x = np.linspace(0, 1, self.hydro.num_els[0] + 1)
+                y = np.linspace(-0.5, 0.5, self.hydro.num_els[1] + 1)
+                ax_colormap.hlines(y, xmin=0, xmax=1, color='k', linewidth=0.5, zorder=2)
+                ax_colormap.vlines(x, ymin=-0.5, ymax=0.5, color='k', linewidth=0.5, zorder=2)
 
             if center_range:
                 colormesh = ax_colormap.pcolormesh(X, Y, Q, vmin=-maxamp, vmax=maxamp, **kwargs)

@@ -44,7 +44,7 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
             vec[i] = 0.
 
 
-def select_model_options(bed_bc:str = 'no-slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', horizontal_diffusion: bool = True, density:str = 'depth-independent',
+def select_model_options(bed_bc:str = 'no_slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', horizontal_diffusion: bool = True, density:str = 'depth-independent',
                  advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1, mesh_generation_method='unstructured',
                  taylor_hood:bool = True):
     
@@ -132,11 +132,15 @@ class Hydrodynamics(object):
     """
 
     def __init__(self, mesh: ngsolve.Mesh, model_options:dict, imax:int, M:int, order:int,
-                 boundary_partition_dict=None, boundary_maxh_dict=None, geometrycurves=None, maxh_global=None, num_els=None):
+                 boundary_partition_dict=None, boundary_maxh_dict=None, geometrycurves=None, maxh_global=None, num_cells=None, imin=0):
         
         self.mesh = mesh
         self.model_options = model_options
         self.imax = imax
+        if isinstance(imin, int) and imin >= 0:
+            self.imin = imin
+        else:
+            raise ValueError(f"Provided minimum constituent {imin} invalid; must be a positive integer.")
         self.M = M
         self.num_equations = (2*M+1)*(2*imax + 1)
         self.order = order
@@ -155,13 +159,13 @@ class Hydrodynamics(object):
         else:
             raise ValueError("Please submit geometrycurves to hydrodynamics object.")
         
-        if maxh_global is not None and num_els is None:
+        if maxh_global is not None and num_cells is None:
             self.maxh = maxh_global
-        elif maxh_global is None and num_els is not None:
-            self.num_els = num_els
-            self.maxh = max(1/num_els[0], 1/num_els[1])
+        elif maxh_global is None and num_cells is not None:
+            self.num_cells = num_cells
+            self.maxh = max(1/num_cells[0], 1/num_cells[1])
         else:
-            raise ValueError("Please submit either maxh_global (unstructured mesh) or num_els (structured mesh); not both")
+            raise ValueError("Please submit either maxh_global (unstructured mesh) or num_cells (structured mesh); not both")
 
         if boundary_partition_dict is None:
             self.boundary_partition_dict = {RIVER:[0,1],SEA:[0,1],WALLUP:[0,1],WALLDOWN:[0,1]}
@@ -177,8 +181,8 @@ class Hydrodynamics(object):
         # check/generate advection_influence_matrix
 
         if self.model_options['advection_influence_matrix'] is None:
-            self.model_options['advection_influence_matrix'] = np.full((self.imax + 1, self.imax + 1), True) # in this case, every constituent affects every other constituent through advection, as would be physical
-        elif self.model_options['advection_influence_matrix'].shape != (self.imax+1, self.imax+1):
+            self.model_options['advection_influence_matrix'] = np.full((self.imax + 1 - self.imin, self.imax + 1 - self.imin), True) # in this case, every constituent affects every other constituent through advection, as would be physical
+        elif self.model_options['advection_influence_matrix'].shape != (self.imax+1-self.imin, self.imax+1-self.imin):
             raise ValueError(f"Invalidly shaped advection influence matrix, please provide a square boolean matrix of size imax+1: {self.imax+1}")
         elif self.model_options['advection_influence_matrix'].dtype != bool:
             raise ValueError(f"Invalid advection influence matrix, please provide a *boolean* matrix")
@@ -224,11 +228,18 @@ class Hydrodynamics(object):
             else:
                 Z = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
             
-            list_of_spaces = [U for _ in range(self.M*(2*self.imax + 1))]
-            for _ in range(self.M*(2*self.imax + 1)):
-                list_of_spaces.append(V)
-            for _ in range(2*self.imax + 1):
-                list_of_spaces.append(Z)
+            if self.imin == 0:
+                list_of_spaces = [U for _ in range(self.M*(2*self.imax + 1))]
+                for _ in range(self.M*(2*self.imax + 1)):
+                    list_of_spaces.append(V)
+                for _ in range(2*self.imax + 1):
+                    list_of_spaces.append(Z)
+            else:
+                list_of_spaces = [U for _ in range(self.M * (2*(self.imax - self.imin + 1)))]
+                for _ in range(self.M*(2*self.imax - self.imin + 1)):
+                    list_of_spaces.append(V)
+                for _ in range(2*(self.imax - self.imin + 1)):
+                    list_of_spaces.append(Z)
 
             X = ngsolve.FESpace(list_of_spaces)
             self.femspace = X
@@ -239,9 +250,14 @@ class Hydrodynamics(object):
             else:
                 G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
 
-            list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
-            for _ in range(2*self.imax+1):
-                list_of_spaces.append(G)
+            if self.imin == 0:
+                list_of_spaces = [U for _ in range(2*self.M*(2*self.imax + 1))]
+                for _ in range(2*self.imax+1):
+                    list_of_spaces.append(G)
+            else:
+                list_of_spaces = [U for _ in range(2*self.M*(2*(self.imax - self.imin + 1)))]
+                for _ in range(2*(self.imax - self.imin + 1)):
+                    list_of_spaces.append(G)
 
             X = ngsolve.FESpace(list_of_spaces) # tensor product of all spaces
             self.femspace = X
@@ -264,6 +280,11 @@ class Hydrodynamics(object):
         trialtuple = self.femspace.TrialFunction()
         testtuple = self.femspace.TestFunction()
 
+        if self.imin == 0:
+            num_time_components = 2 * self.imax + 1
+        else:
+            num_time_components = 2 * (self.imax - self.imin + 1)
+
         alpha_trialfunctions = [dict() for _ in range(self.M)]
         umom_testfunctions = [dict() for _ in range(self.M)] # test functions for momentum equation u
 
@@ -274,33 +295,34 @@ class Hydrodynamics(object):
         DIC_testfunctions = dict() # test functions for Depth-Integrated Continuity equation
 
         for m in range(self.M):
-            alpha_trialfunctions[m][0] = trialtuple[m * (2*self.imax + 1)]
-            umom_testfunctions[m][0] = testtuple[m * (2*self.imax + 1)]
+            if self.imin == 0: # add residual component only if imin == 0
+                alpha_trialfunctions[m][0] = trialtuple[m * num_time_components]
+                umom_testfunctions[m][0] = testtuple[m * num_time_components]
 
-            beta_trialfunctions[m][0] = trialtuple[(self.M + m) * (2*self.imax + 1)]
-            vmom_testfunctions[m][0] = testtuple[(self.M + m) * (2*self.imax + 1)]
+                beta_trialfunctions[m][0] = trialtuple[(self.M + m) * num_time_components]
+                vmom_testfunctions[m][0] = testtuple[(self.M + m) * num_time_components]
             for q in range(1, self.imax + 1):
-                alpha_trialfunctions[m][-q] = trialtuple[m * (2*self.imax + 1) + q]
-                alpha_trialfunctions[m][q] = trialtuple[m * (2*self.imax + 1) + self.imax + q]
+                alpha_trialfunctions[m][-q] = trialtuple[m * num_time_components + q]
+                alpha_trialfunctions[m][q] = trialtuple[m * num_time_components + self.imax + q]
 
-                umom_testfunctions[m][-q] = testtuple[m * (2*self.imax + 1) + q]
-                umom_testfunctions[m][q] = testtuple[m * (2*self.imax + 1) + self.imax + q]
+                umom_testfunctions[m][-q] = testtuple[m * num_time_components + q]
+                umom_testfunctions[m][q] = testtuple[m * num_time_components + self.imax + q]
 
-                beta_trialfunctions[m][-q] = trialtuple[(self.M + m) * (2*self.imax + 1) + q]
-                beta_trialfunctions[m][q] = trialtuple[(self.M + m) * (2*self.imax + 1) + self.imax + q]
+                beta_trialfunctions[m][-q] = trialtuple[(self.M + m) * num_time_components + q]
+                beta_trialfunctions[m][q] = trialtuple[(self.M + m) * num_time_components + self.imax + q]
 
-                vmom_testfunctions[m][-q] = testtuple[(self.M + m) * (2*self.imax + 1) + q]
-                vmom_testfunctions[m][q] = testtuple[(self.M + m) * (2*self.imax + 1) + self.imax + q]
+                vmom_testfunctions[m][-q] = testtuple[(self.M + m) * num_time_components + q]
+                vmom_testfunctions[m][q] = testtuple[(self.M + m) * num_time_components + self.imax + q]
         
-        gamma_trialfunctions[0] = trialtuple[2*(self.M)*(2*self.imax+1)]
-        DIC_testfunctions[0] = testtuple[2*(self.M)*(2*self.imax+1)]
+        gamma_trialfunctions[0] = trialtuple[2*(self.M)*num_time_components]
+        DIC_testfunctions[0] = testtuple[2*(self.M)*num_time_components]
 
         for q in range(1, self.imax + 1):
-            gamma_trialfunctions[-q] = trialtuple[2*(self.M)*(2*self.imax+1) + q]
-            gamma_trialfunctions[q] = trialtuple[2*(self.M)*(2*self.imax+1) + self.imax + q]
+            gamma_trialfunctions[-q] = trialtuple[2*(self.M)*num_time_components + q]
+            gamma_trialfunctions[q] = trialtuple[2*(self.M)*num_time_components + self.imax + q]
 
-            DIC_testfunctions[-q] = testtuple[2*(self.M)*(2*self.imax+1) + q]
-            DIC_testfunctions[q] = testtuple[2*(self.M)*(2*self.imax+1) + self.imax + q]
+            DIC_testfunctions[-q] = testtuple[2*(self.M)*num_time_components + q]
+            DIC_testfunctions[q] = testtuple[2*(self.M)*num_time_components + self.imax + q]
 
         self.alpha_trialfunctions = alpha_trialfunctions
         self.umom_testfunctions = umom_testfunctions
@@ -362,78 +384,6 @@ class Hydrodynamics(object):
             self.gamma_solution[-q] = self.solution_gf.components[2*(self.M)*(2*self.imax+1) + q]
             self.gamma_solution[q] = self.solution_gf.components[2*(self.M)*(2*self.imax+1) + self.imax + q]
 
-
-    # def _construct_velocities(self): # THIS FUNCTIONALITY IS PERFORMED BY postprocessing.py
-    #     """Still dependent on precise form of orthogonal basis: FIX"""
-    #     self.u = dict()
-    #     self.v = dict()
-    #     self.w = dict()
-
-    #     self.u[0] = sum([self.alpha_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-    #     self.v[0] = sum([self.beta_solution[m][0]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-  
-    #     for q in range(1, self.imax + 1):
-    #         self.u[-q] = sum([self.alpha_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-    #         self.v[-q] = sum([self.beta_solution[m][-q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-    #         self.u[q] = sum([self.alpha_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-    #         self.v[q] = sum([self.beta_solution[m][q]*self.vertical_basis.coefficient_function(m) for m in range(self.M + 1)])
-
-    #     omegatilde = dict() # alternative vertical velocity in Burchard & Petersen (1997)
-    #     omegatilde[0] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
-    #         (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][0])[0] + ngsolve.grad(self.beta_solution[m][0])[1])
-    #         + self.alpha_solution[m][0] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][0] * self.spatial_physical_parameters['H'].gradient_cf[1])
-    #         * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
-    #     for m in range(self.M + 1)])
-
-    #     for q in range(1, self.imax + 1):
-    #         omegatilde[-q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
-    #             (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][-q])[0] + ngsolve.grad(self.beta_solution[m][-q])[1])
-    #             + self.alpha_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][-q] * self.spatial_physical_parameters['H'].gradient_cf[1])
-    #             * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
-    #         for m in range(self.M + 1)])
-    #         omegatilde[q] = (-1/self.spatial_physical_parameters['H'].cf) * sum([
-    #             (self.spatial_physical_parameters['H'].cf * (ngsolve.grad(self.alpha_solution[m][q])[0] + ngsolve.grad(self.beta_solution[m][q])[1])
-    #             + self.alpha_solution[m][q] * self.spatial_physical_parameters['H'].gradient_cf[0] + self.beta_solution[m][q] * self.spatial_physical_parameters['H'].gradient_cf[1])
-    #             * minusonepower(m) / ((m+0.5)*ngsolve.pi) * (ngsolve.sin((m+0.5)*ngsolve.pi*ngsolve.z) + minusonepower(m))
-    #         for m in range(self.M + 1)])
-
-    #     self.w[0] = self.spatial_physical_parameters['H'].cf * omegatilde[0] + self.u[0] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
-    #                 self.v[0] * self.spatial_physical_parameters['H'].gradient_cf[1]
-        
-    #     for q in range(1, self.imax + 1):
-    #         self.w[-q] = self.spatial_physical_parameters['H'].cf * omegatilde[-q] + self.u[-q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
-    #                 self.v[-q] * self.spatial_physical_parameters['H'].gradient_cf[1]
-    #         self.w[q] = self.spatial_physical_parameters['H'].cf * omegatilde[q] + self.u[q] * self.spatial_physical_parameters['H'].gradient_cf[0] + \
-    #                 self.v[q] * self.spatial_physical_parameters['H'].gradient_cf[1]
-
-
-    # def _construct_depth_averaged_velocities(self):
-
-    #     self.u_DA = dict()
-    #     self.v_DA = dict()
-
-    #     self.u_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][0] for m in range(self.M)])
-    #     self.v_DA[0] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][0] for m in range(self.M)])
-
-    #     for q in range(1, self.imax + 1):
-    #         self.u_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][-q] for m in range(self.M)])
-    #         self.u_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.alpha_solution[m][q] for m in range(self.M)])
-
-    #         self.v_DA[-q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][-q] for m in range(self.M)])
-    #         self.v_DA[q] = sum([self.vertical_basis.tensor_dict['G4'](m) * self.beta_solution[m][q] for m in range(self.M)])
-
-    # Public methods
-
-    # def add_solution(self, filename):
-    #     self.solution_gf = ngsolve.GridFunction(self.femspace)
-    #     mesh_functions.set_basevector_from_txt(self.solution_gf.vec, filename)
-    #     self.restructure_solution()
-    #     # self._construct_velocities()
-    #     self._construct_depth_averaged_velocities()
-
-
-    # def save_solution(self, filename):
-    #     mesh_functions.save_gridfunction_to_txt(self.solution_gf, filename)
 
     def save(self, name, **kwargs):
         """Saves the hydrodynamics object. Only possible if the Fourier/vertical bases are chosen from the predefined 

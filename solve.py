@@ -19,7 +19,7 @@ from mesh_functions import plot_CF_colormap
 
 def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-9, linear_solver = 'pardiso', 
           continuation_parameters: dict = {'advection_epsilon': [1], 'Av': [1]}, stopcriterion = 'scaled_2norm',
-          reduced_hydro: Hydrodynamics=None, plot_intermediate_results='none', parallel=True):
+          reduced_hydro: Hydrodynamics=None, plot_intermediate_results='none', parallel=True, matrix_analysis=False):
 
     """
     
@@ -37,6 +37,9 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         - reduced_hydro (Hydrodynamics):    reduced version of the hydrodynamics object that can be used as a preconditioner for iterative solvers; Note: M and imax must be identical
         - plot_intermediate_results:        indicates whether intermediate results should be plotted and saved; options: 'none' (default), 'all' and 'overview'.
         - parallel:                         flag indicating whether time-costly operations should be performed in parallel (see https://docu.ngsolve.org/latest/how_to/howto_parallel.html)
+        - matrix_analysis:                  if True, computes eigenvalues and prints properties of the block structure of the system matrix: in particular whether the u-u-block, v-v-block, and zeta-zeta-block are symmetric/antisymmetric
+                                            and the eigenvalues of the u-u-block, v-v-block, zeta-zeta-block, and the uv-uv-block (in the form of stating whether they are positive definite/have zero real part eigenvalues). This option is
+                                            only recommended for small systems (DOFS < ~5000), since all eigenvalues of the matrices must be computed.
     
     """
 
@@ -154,6 +157,45 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             assembly_time = timeit.default_timer() - assembly_start
             print(f"    Assembly took {assembly_time} seconds")
 
+            if matrix_analysis:
+
+                fig, ax = plt.subplots(1, 3)
+                freedofs = get_freedof_list(hydro.femspace.FreeDofs())
+                mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedofs).todense()
+                ax[0].spy(mat)
+                im = ax[1].imshow(mat, cmap='RdBu', vmin = -np.amax(np.absolute(mat)), vmax = np.amax(np.absolute(mat)))
+                print(f"Largest matrix element has magnitude {np.amax(np.absolute(mat))}")
+                
+                num_free_basisfunctions_u = get_num_free_basisfunctions_per_component(sol, hydro.femspace, 0)
+                num_free_basisfunctions_v = get_num_free_basisfunctions_per_component(sol, hydro.femspace, hydro.M * (2 * hydro.imax + 1))
+                num_free_basisfunctions_z = get_num_free_basisfunctions_per_component(sol, hydro.femspace, 2 * hydro.M * (2 * hydro.imax + 1))
+
+                zetamat = mat[(hydro.M * (2*hydro.imax+1) * (num_free_basisfunctions_v+num_free_basisfunctions_u)):, (hydro.M * (2*hydro.imax+1) * (num_free_basisfunctions_v+num_free_basisfunctions_u)):]
+                print(f"    Zeta antisymmetric: {is_antisymmetric(zetamat)}")
+                zeta_eigenvalues, _ = np.linalg.eig(zetamat)
+                print(f"    zeta zero real part: {np.all(np.absolute(zeta_eigenvalues.real) < 1e-16*np.ones_like(zeta_eigenvalues))}")
+                umat = mat[:(hydro.M * (2*hydro.imax + 1) * num_free_basisfunctions_u),:(hydro.M * (2 * hydro.imax + 1) * num_free_basisfunctions_u)]
+                print(f"    u Symmetric: {is_symmetric(umat)}")
+                print(f"    u Antisymmetric: {is_antisymmetric(umat)}")
+                u_eigenvalues, _ = np.linalg.eig(umat)
+                print(f"    u Positive definite: {np.all(np.real(u_eigenvalues) > np.zeros_like(u_eigenvalues))}")
+                vmat = mat[(hydro.M * (2*hydro.imax +1) * num_free_basisfunctions_u):(hydro.M * (2*hydro.imax+1) * (num_free_basisfunctions_v+num_free_basisfunctions_u) ),(hydro.M * (2*hydro.imax +1) * num_free_basisfunctions_u):(hydro.M * (2*hydro.imax+1) * (num_free_basisfunctions_v+num_free_basisfunctions_u))]
+                print(f"    v Symmetric: {is_symmetric(vmat)}")
+                print(f"    v Antisymmetric: {is_antisymmetric(vmat)}")
+                v_eigenvalues, _ = np.linalg.eig(vmat)
+                print(f"    v Positive definite: {np.all(np.real(v_eigenvalues) > np.zeros_like(v_eigenvalues))}")
+                uvblock = mat[:(hydro.M * (2*hydro.imax+1) * (num_free_basisfunctions_v+num_free_basisfunctions_u)),:(hydro.M * (2*hydro.imax+1) * (num_free_basisfunctions_v+num_free_basisfunctions_u))]
+                uv_eigenvalues, _ = np.linalg.eig(uvblock)
+                print(f"    u-v Positive definite: {np.all(uv_eigenvalues.real > np.zeros_like(uv_eigenvalues))}")
+                print(f"    u-v condition number: {np.amax(np.absolute(uv_eigenvalues)) / np.amin(np.absolute(uv_eigenvalues))}")
+
+                uv_symmetricpart = 0.5 * (uvblock + uvblock.T)
+                uv_symmetric_eigenvalues, _ = np.linalg.eig(uv_symmetricpart)
+                print(f"    u-v nonsymmetric positive definite: {np.all(uv_symmetric_eigenvalues > np.zeros_like(uv_symmetric_eigenvalues))}")
+
+
+
+
             if reduced_hydro is not None:
                 assembly_start_reduced = timeit.default_timer()
                 a_reduced.Assemble()
@@ -161,8 +203,13 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 print(f"    Assembly for reduced model preconditioner took {assembly_time_reduced} seconds")
 
             # Solve linearisation
-            rhs = hydro.solution_gf.vec.CreateVector()
-            hydro.total_bilinearform.Apply(hydro.solution_gf.vec, rhs)
+            if matrix_analysis:
+                rhs = hydro.solution_gf.vec.CreateVector()
+                hydro.total_bilinearform.Apply(hydro.solution_gf.vec, rhs)
+                ax[2].imshow(np.tile(rhs.FV().NumPy()[freedofs], (len(freedofs),1)).T, cmap='RdBu', vmin=-np.amax(rhs.FV().NumPy()), vmax=np.amax(rhs.FV().NumPy()))
+                plt.show()
+
+ 
             du = ngsolve.GridFunction(hydro.femspace)
             for i in range(hydro.femspace.dim):
                 du.components[i].Set(0, ngsolve.BND) # homogeneous boundary conditions
@@ -186,7 +233,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 mat = remove_fixeddofs_from_csr(basematrix_to_csr_matrix(a.mat), freedof_list)
                 rhs_arr = rhs.FV().NumPy()[freedof_list]
 
-                sol = pypardiso.spsolve(mat, rhs_arr) # does parallel computation automatically????
+                sol = pypardiso.spsolve(mat, rhs_arr) # does parallel computation automatically???? --> apparently not
                 du.vec.FV().NumPy()[freedof_list] = sol
             elif linear_solver == 'bicgstab':
                 freedof_list = get_freedof_list(hydro.femspace.FreeDofs())
@@ -322,6 +369,21 @@ def basematrix_to_csr_matrix(mat: ngsolve.BaseMatrix):
     return sp.csr_matrix((vals, (rows, cols)))
 
 
+def slice_csr_matrix(mat, slicelist0, slicelist1):
+    """Returns a sliced sparse CSR matrix, which is row-sliced using slicelist0 and column-sliced using slicelist1.
+    
+    Arguments:
+    
+    - mat:          matrix to be sliced;
+    - slicelist0:   rows to keep in the slice;
+    - slicelist1:   columns to keep in the slice;
+    """
+
+    mat = mat[slicelist0, :]
+    mat = mat[:, slicelist1]
+    return mat
+
+
 def remove_fixeddofs_from_csr(mat, freedof_list):
     """Removes all of the fixed degrees of freedom from a scipy sparse matrix in CSR-format.
     
@@ -332,12 +394,43 @@ def remove_fixeddofs_from_csr(mat, freedof_list):
 
     """
 
-    mat = mat[freedof_list, :]
-    mat = mat[:, freedof_list]
-    return mat
+    return slice_csr_matrix(mat, freedof_list, freedof_list)
 
 
-# Properties of matrices
+def get_component_length(gf: ngsolve.GridFunction):
+    """Returns the length of a component of a gridfunction. In our model, this means how many FE basis functions are associated to each alpha_{m,i}, beta_{m,i} and gamma_{m,i}.
+    
+    Arguments:
+    
+    gf (ngsolve.Gridfunction)
+    
+    """
+    vec = gf.components[0].vec
+    return np.shape(vec.FV().NumPy())[0]
+
+
+def get_num_free_basisfunctions_per_component(gf: ngsolve.GridFunction, fespace, component):
+    """Returns the number of free basis functions for a component of a gridfunction. In our model, this means the size of each block in the system matrix.
+    
+    Arguments:
+    
+    - gf (ngsolve.GridFunction):      gridfunction
+    - fespace:                        finite element the gridfunction is defined on
+    - component (int):                which component should be evaluated
+    
+    """
+    total_num_basisfunctions = get_component_length(gf)
+    
+    num_free_basisfunctions = 0
+    for i in range(total_num_basisfunctions):
+        if fespace.FreeDofs()[total_num_basisfunctions * component + i]:
+            num_free_basisfunctions += 1
+    
+    return num_free_basisfunctions
+
+
+
+# tools for matrix analysis
 
 def is_symmetric(mat: sp.csr_matrix, tol=1e-12):
     """Returns True if a sparse matrix (CSR) is symmetric within a certain (absolute) tolerance.
@@ -349,6 +442,19 @@ def is_symmetric(mat: sp.csr_matrix, tol=1e-12):
     
     """
     diff = mat - mat.transpose()
+    return not np.any(np.absolute(diff.data) >= tol * np.ones_like(diff.data))
+
+
+def is_antisymmetric(mat: sp.csr_matrix, tol=1e-12):
+    """Returns True if a sparse matrix (CSR) is antisymmetric within a certain (absolute) tolerance.
+    
+    Arguments:
+
+    - mat (sp.csr_matrix):      sparse matrix to be checked;
+    - tol (float):              if elements are further apart than this number, the function returns False.
+    
+    """
+    diff = mat + mat.transpose()
     return not np.any(np.absolute(diff.data) >= tol * np.ones_like(diff.data))
 
 

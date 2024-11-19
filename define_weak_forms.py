@@ -645,19 +645,19 @@ def add_weak_form(a: ngsolve.BilinearForm, model_options: dict, alpha_trialfunct
             a += sum([0.5 * G4(m) * (H + R) * DIC_testfunctions[l] * (ngsolve.grad(alpha_trialfunctions[m][l])[0] / x_scaling + ngsolve.grad(beta_trialfunctions[m][l])[1] / y_scaling) * ngsolve.dx for m in range(M)])
 
     else:
-        a += sum([0.5 * DIC_testfunctions[0] * (H+R) * G4(m) * normalalpha[m][0]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)])
+        a += sum([0.5 * DIC_testfunctions[0] * (H+R) * G4(m) * normalalpha[m]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)])
         a += sum([G4(m) * -0.5 * (H+R) * (ngsolve.grad(DIC_testfunctions[0])[0] * alpha_trialfunctions[m][0] / x_scaling +
                                             ngsolve.grad(DIC_testfunctions[0])[1] * beta_trialfunctions[m][0] / y_scaling)  * ngsolve.dx for m in range(0, M)])
         
             # terms l != 0
         for l in range(1, imax + 1):
             a += sigma * np.pi * l * DIC_testfunctions[-l] * gamma_trialfunctions[l] * ngsolve.dx
-            a += sum([0.5 * DIC_testfunctions[-l] * (H+R) * G4(m) * normalalpha[m][-l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)])
+            # a += sum([0.5 * DIC_testfunctions[-l] * (H+R) * G4(m) * normalalpha[m][-l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)]) # --> This is zero because we assume the river discharge is stationary
             a += sum([-0.5 * (H+R) * G4(m) * (ngsolve.grad(DIC_testfunctions[-l])[0] * alpha_trialfunctions[m][-l] / x_scaling +
                                                 ngsolve.grad(DIC_testfunctions[-l])[1] * beta_trialfunctions[m][-l] / y_scaling)  * ngsolve.dx for m in range(0, M)])
             # l > 0
             a += sigma * np.pi * -l * DIC_testfunctions[l] * gamma_trialfunctions[-l] * ngsolve.dx
-            a += sum([0.5 * DIC_testfunctions[l] * (H+R) * G4(m) * normalalpha[m][l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)])
+            # a += sum([0.5 * DIC_testfunctions[l] * (H+R) * G4(m) * normalalpha[m][l]  / x_scaling * ngsolve.ds(BOUNDARY_DICT[RIVER]) for m in range(0, M)]) # --> Likewise
             a += sum([-0.5 * (H+R) * G4(m) * (ngsolve.grad(DIC_testfunctions[l])[0] * alpha_trialfunctions[m][l] / x_scaling +
                                                 ngsolve.grad(DIC_testfunctions[l])[1] * beta_trialfunctions[m][l] / y_scaling)  * ngsolve.dx for m in range(0, M)])
     

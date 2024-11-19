@@ -54,11 +54,6 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
 
     print(f"Initiating solution procedure for hydrodynamics-model with {hydro.M} vertical components and {hydro.imax + 1} tidal constituents (including residual).\nIn total, there are {(2*hydro.M+1)*(2*hydro.imax+1)} equations. The total number of free degrees of freedom is {hydro.nfreedofs}.")
 
-    # set number of threads
-    num_available_cores = multiprocessing.cpu_count()
-    print(num_available_cores)
-    mkl.set_num_threads(num_available_cores)
-
     # Set initial guess
     sol = ngsolve.GridFunction(hydro.femspace)
         # tidal waterlevel
@@ -69,7 +64,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
         # river discharge
     if hydro.model_options['horizontal_diffusion']:
         for m in range(hydro.M):
-            sol.components[m * (2*hydro.imax + 1)].Set(hydro.riverine_forcing.normal_alpha_boundaryCF[m][0], ngsolve.BND)
+            sol.components[m * (2*hydro.imax + 1)].Set(hydro.riverine_forcing.normal_alpha[m], ngsolve.BND)
             
     hydro.solution_gf = sol
     

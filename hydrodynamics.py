@@ -519,8 +519,8 @@ class Hydrodynamics(object):
         self.seaward_forcing = SeawardForcing(self, amplitude_list, phase_list)
 
 
-    def set_riverine_boundary_condition(self, discharge_amplitude_list, discharge_phase_list, **kwargs):
-        self.riverine_forcing = RiverineForcing(self, discharge_amplitude_list, discharge_phase_list, **kwargs)
+    def set_riverine_boundary_condition(self, discharge_cf, **kwargs):
+        self.riverine_forcing = RiverineForcing(self, discharge_cf, **kwargs)
 
 
     # Classification in terms of elliptic, hyperbolic, or parabolic (or neither)
@@ -811,102 +811,146 @@ def load_hydrodynamics(name, **kwargs):
 
 class RiverineForcing(object):
 
-    def __init__(self, hydro: Hydrodynamics, discharge_amplitude_list, discharge_phase_list, is_constant=True): # Currently, only constant river discharge works
-        
-        self.discharge_amplitudes = discharge_amplitude_list
-        self.discharge_phases = discharge_phase_list
+    
+    def __init__(self, hydro: Hydrodynamics, discharge_cf: ngsolve.CoefficientFunction):
+
+        # initialise parameters
+        self.discharge_cf = discharge_cf
         self.hydro = hydro
-        self.is_constant = is_constant
 
-        self.discharge_dict = dict() # Use a dictionary to enable negative indices
-        self.Q_vec = dict() # vector (\int_0^T Q h_p dt), p = -imax, ..., imax
+        Av = self.hydro.constant_physical_parameters['Av']
+        H = self.hydro.spatial_physical_parameters['H']
+        R = self.hydro.spatial_physical_parameters['R']
+        if self.hydro.model_options['bed_bc'] == 'partial_slip':
+            sf = self.hydro.constant_physical_parameters['sf']
 
-        G3 = hydro.vertical_basis.tensor_dict['G3']
-        G4 = hydro.vertical_basis.tensor_dict['G4']
+        # project vertical structure onto vertical basis
 
+        if self.hydro.model_options['bed_bc'] == 'no_slip':
 
-        # fill amplitude and phase lists with zeros for unfilled elements unless is_constant == True and create the vector Q_vec
-
-        if not is_constant:
-            for _ in range(hydro.imax + 1 - len(discharge_amplitude_list)):
-                self.discharge_amplitudes.append(0)
-                self.discharge_phases.append(0)
-
-            self.discharge_dict[0] = self.discharge_amplitudes[0]
-            self.Q_vec[0] = hydro.time_basis.inner_product(0, 0) * self.discharge_dict[0]
-            for i in range(1, hydro.imax + 1):
-                self.discharge_dict[i] = self.discharge_amplitudes[i] * ngsolve.cos(self.discharge_phases[i])
-                self.discharge_dict[-i] = self.discharge_amplitudes[i] * ngsolve.sin(self.discharge_phases[i])
-
-                self.Q_vec[i] = self.discharge_dict[i] * hydro.time_basis.inner_product(i, i)
-                self.Q_vec[-i] = self.discharge_dict[-i] * hydro.time_basis.inner_product(-i, -i)
-
-        else:
-            self.discharge_dict[0] = self.discharge_amplitudes[0]
-            self.Q_vec[0] = (0.5 / hydro.constant_physical_parameters['sigma']) * self.discharge_dict[0]
+            def vertical_structure(z):
+                return 1 - z**2
         
-        # Computation of normal components
+        elif self.hydro.model_options['bed_bc'] == 'partial_slip':
 
-        if is_constant and hydro.model_options['density'] == 'depth-independent':
-            d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * G4(k) for k in range(hydro.M)]
-            d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * G4(k) for k in range(hydro.M)]
-
-            C = [-0.25 * (1/hydro.constant_physical_parameters['sigma']) * G3(k,k) *  \
-                 (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
-                    for k in range(hydro.M)]
+            def vertical_structure(z):
+                return 2*Av/sf + 1 - z**2
             
-            # sum_d1d2 = sum([d1[k]*d2[k] for k in range(hydro.M)])
-            sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M)])
+        projection = truncationbasis.Projection(vertical_structure, hydro.vertical_basis, hydro.M)
+        projection.construct_analytical_massmatrix()
+        projection.project_galerkin(10, 30, sparse=False) # matrix is so small that a sparse structure is completely unnecessary
 
-            # self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
-            self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
-            self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M)]
+        self.normal_alpha = []
+
+        if self.hydro.model_options['bed_bc'] == 'no_slip':
             for m in range(hydro.M):
-                for q in range(1, hydro.imax + 1):
-                    self.normal_alpha[m][q] = 0
-                    self.normal_alpha[m][-q] = 0
+                self.normal_alpha.append(projection.coefficients[m] * 1.5 * discharge_cf / (H.cf + R.cf))
 
-                    self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
-                    self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
-
-        elif (not is_constant) and hydro.model_options['density'] == 'depth-independent':
-
-            C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi*np.pi * \
-                 (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
-                    for k in range(hydro.M)]
-            
-            d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
-            d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
-                  (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
-            
-            c1 = [[1 + 0.25*np.pi*np.pi*q*q*(4/(4*C[k]*C[k]-np.pi**2 * q**2)) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
-            c2 = [[-0.5*np.pi*q*(4*C[k])/(4*C[k]*C[k] - np.pi**2 * q**2) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
-            c3 = [[-0.5*np.pi*q/C[k] for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
-            c4 = [[4*C[k] / (4*C[k]*C[k]-np.pi*np.pi*q*q) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
-
-            e1 = [-sum([d1[k]*d2[k]*c1[k][q-1] / C[k] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
-            e2 = [-sum([d1[k]*d2[k]*c2[k][q-1] / C[k] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
-            e3 = [-sum([d1[k]*d2[k]*c3[k][q-1] / c4[k][q-1] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
-            e4 = [-sum([d1[k]*d2[k] / c4[k][q-1] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
-
-            gamma = dict()
-            sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M)])
-            gamma[0] = -self.Q_vec[0] / sum_d1d2
-
-            for q in range(1, hydro.imax + 1):
-                gamma[q] = e1[q-1] / (e4[q-1]*e1[q-1] - e3[q-1]) * (self.Q_vec[q] - (e3[q-1]/e1[q-1])*self.Q_vec[-q])
-                gamma[-q] = (self.Q_vec[-q] - e2[q-1]*gamma[q]) / e1[q-1]
-
-            self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
-            self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M)]
+        elif self.hydro.model_options['bed_bc'] == 'partial_slip':
             for m in range(hydro.M):
-                for q in range(1, hydro.imax + 1):
-                    self.normal_alpha[m][q] = d1[m]*c3[m][q-1]*gamma[-q] / c4[m][q-1] + d2[m]*gamma[q] / c4[m][q-1]
-                    self.normal_alpha[m][-q] = d1[m]*c1[m][q-1]*gamma[-q] / C[m] + d1[m]*c2[m][q-1]*gamma[q] / C[m]
+                self.normal_alpha.append(projection.coefficients[m] * (3 * sf * discharge_cf) / ((H.cf + R.cf) * (2*sf + 6*Av)))
 
-                    self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][q]}, default=0)
-                    self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][-q]}, default=0)
+
+
+
+
+
+    # def __init__(self, hydro: Hydrodynamics, discharge_amplitude_list, discharge_phase_list, is_constant=True): # Currently, only constant river discharge works
+        
+    #     self.discharge_amplitudes = discharge_amplitude_list
+    #     self.discharge_phases = discharge_phase_list
+    #     self.hydro = hydro
+    #     self.is_constant = is_constant
+
+    #     self.discharge_dict = dict() # Use a dictionary to enable negative indices
+    #     self.Q_vec = dict() # vector (\int_0^T Q h_p dt), p = -imax, ..., imax
+
+    #     G3 = hydro.vertical_basis.tensor_dict['G3']
+    #     G4 = hydro.vertical_basis.tensor_dict['G4']
+
+
+    #     # fill amplitude and phase lists with zeros for unfilled elements unless is_constant == True and create the vector Q_vec
+
+    #     if not is_constant:
+    #         for _ in range(hydro.imax + 1 - len(discharge_amplitude_list)):
+    #             self.discharge_amplitudes.append(0)
+    #             self.discharge_phases.append(0)
+
+    #         self.discharge_dict[0] = self.discharge_amplitudes[0]
+    #         self.Q_vec[0] = hydro.time_basis.inner_product(0, 0) * self.discharge_dict[0]
+    #         for i in range(1, hydro.imax + 1):
+    #             self.discharge_dict[i] = self.discharge_amplitudes[i] * ngsolve.cos(self.discharge_phases[i])
+    #             self.discharge_dict[-i] = self.discharge_amplitudes[i] * ngsolve.sin(self.discharge_phases[i])
+
+    #             self.Q_vec[i] = self.discharge_dict[i] * hydro.time_basis.inner_product(i, i)
+    #             self.Q_vec[-i] = self.discharge_dict[-i] * hydro.time_basis.inner_product(-i, -i)
+
+    #     else:
+    #         self.discharge_dict[0] = self.discharge_amplitudes[0]
+    #         self.Q_vec[0] = (0.5 / hydro.constant_physical_parameters['sigma']) * self.discharge_dict[0]
+        
+    #     # Computation of normal components
+
+    #     if is_constant and hydro.model_options['density'] == 'depth-independent':
+    #         d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * G4(k) for k in range(hydro.M)]
+    #         d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * G4(k) for k in range(hydro.M)]
+
+    #         C = [-0.25 * (1/hydro.constant_physical_parameters['sigma']) * G3(k,k) *  \
+    #              (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
+    #                 for k in range(hydro.M)]
+            
+    #         # sum_d1d2 = sum([d1[k]*d2[k] for k in range(hydro.M)])
+    #         sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M)])
+
+    #         # self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
+    #         self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
+    #         self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M)]
+    #         for m in range(hydro.M):
+    #             for q in range(1, hydro.imax + 1):
+    #                 self.normal_alpha[m][q] = 0
+    #                 self.normal_alpha[m][-q] = 0
+
+    #                 self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
+    #                 self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: 0}, default=0)
+
+    #     elif (not is_constant) and hydro.model_options['density'] == 'depth-independent':
+
+    #         C = [0.25 * (1/hydro.constant_physical_parameters['sigma']) * (k+0.5)*(k+0.5) * np.pi*np.pi * \
+    #              (hydro.constant_physical_parameters['Av'] / (hydro.spatial_physical_parameters['H'].cf*hydro.spatial_physical_parameters['H'].cf)) \
+    #                 for k in range(hydro.M)]
+            
+    #         d1 = [0.5*(1/hydro.constant_physical_parameters['sigma']) * hydro.constant_physical_parameters['g'] * \
+    #               (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
+    #         d2 = [hydro.spatial_physical_parameters['H'].cf / (2 * hydro.constant_physical_parameters['sigma']) * \
+    #               (np.power(-1, k) / ((k+0.5)*np.pi)) for k in range(hydro.M)]
+            
+    #         c1 = [[1 + 0.25*np.pi*np.pi*q*q*(4/(4*C[k]*C[k]-np.pi**2 * q**2)) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+    #         c2 = [[-0.5*np.pi*q*(4*C[k])/(4*C[k]*C[k] - np.pi**2 * q**2) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+    #         c3 = [[-0.5*np.pi*q/C[k] for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+    #         c4 = [[4*C[k] / (4*C[k]*C[k]-np.pi*np.pi*q*q) for q in range(1, hydro.imax + 1)] for k in range(hydro.M)]
+
+    #         e1 = [-sum([d1[k]*d2[k]*c1[k][q-1] / C[k] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+    #         e2 = [-sum([d1[k]*d2[k]*c2[k][q-1] / C[k] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+    #         e3 = [-sum([d1[k]*d2[k]*c3[k][q-1] / c4[k][q-1] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+    #         e4 = [-sum([d1[k]*d2[k] / c4[k][q-1] for k in range(hydro.M)]) for q in range(1, hydro.imax + 1)]
+
+    #         gamma = dict()
+    #         sum_d1d2 = sum([d1[k]*d2[k]/C[k] for k in range(hydro.M)])
+    #         gamma[0] = -self.Q_vec[0] / sum_d1d2
+
+    #         for q in range(1, hydro.imax + 1):
+    #             gamma[q] = e1[q-1] / (e4[q-1]*e1[q-1] - e3[q-1]) * (self.Q_vec[q] - (e3[q-1]/e1[q-1])*self.Q_vec[-q])
+    #             gamma[-q] = (self.Q_vec[-q] - e2[q-1]*gamma[q]) / e1[q-1]
+
+    #         self.normal_alpha = [{0: (-d1[m]/(sum_d1d2*C[m])) * self.Q_vec[0]} for m in range(hydro.M)]
+    #         self.normal_alpha_boundaryCF = [{0: hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][0]}, default=0)} for m in range(hydro.M)]
+    #         for m in range(hydro.M):
+    #             for q in range(1, hydro.imax + 1):
+    #                 self.normal_alpha[m][q] = d1[m]*c3[m][q-1]*gamma[-q] / c4[m][q-1] + d2[m]*gamma[q] / c4[m][q-1]
+    #                 self.normal_alpha[m][-q] = d1[m]*c1[m][q-1]*gamma[-q] / C[m] + d1[m]*c2[m][q-1]*gamma[q] / C[m]
+
+    #                 self.normal_alpha_boundaryCF[m][q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][q]}, default=0)
+    #                 self.normal_alpha_boundaryCF[m][-q] = hydro.mesh.BoundaryCF({BOUNDARY_DICT[RIVER]: self.normal_alpha[m][-q]}, default=0)
         
 
 

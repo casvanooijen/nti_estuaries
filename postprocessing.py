@@ -203,8 +203,8 @@ class PostProcessing(object):
             fig_mesh, ax_mesh = plt.subplots()
             ax_mesh.triplot(triangulation, **kwargs)
         else:
-            x = np.linspace(0, 1, self.hydro.num_els[0] + 1)
-            y = np.linspace(-0.5, 0.5, self.hydro.num_els[1] + 1)
+            x = np.linspace(0, 1, self.hydro.num_cells[0] + 1)
+            y = np.linspace(-0.5, 0.5, self.hydro.num_cells[1] + 1)
 
             fig_mesh, ax_mesh = plt.subplots()
             ax_mesh.hlines(y, xmin=0, xmax=1, **kwargs)
@@ -244,8 +244,8 @@ class PostProcessing(object):
                 except ValueError:
                     print("Constant solution; plotting contour lines impossible")
         else:
-            x = np.linspace(0, 1, self.hydro.num_els[0] * (refinement_level + 1) + 1)
-            y = np.linspace(-0.5, 0.5, self.hydro.num_els[1] * (refinement_level + 1) + 1)
+            x = np.linspace(0, 1, self.hydro.num_cells[0] * (refinement_level + 1) + 1)
+            y = np.linspace(-0.5, 0.5, self.hydro.num_cells[1] * (refinement_level + 1) + 1)
             X, Y = np.meshgrid(x, y, indexing='ij')
             Q = np.zeros_like(X)
 
@@ -258,8 +258,8 @@ class PostProcessing(object):
             fig_colormap, ax_colormap = plt.subplots(figsize=figsize)
 
             if show_mesh:
-                x = np.linspace(0, 1, self.hydro.num_els[0] + 1)
-                y = np.linspace(-0.5, 0.5, self.hydro.num_els[1] + 1)
+                x = np.linspace(0, 1, self.hydro.num_cells[0] + 1)
+                y = np.linspace(-0.5, 0.5, self.hydro.num_cells[1] + 1)
                 ax_colormap.hlines(y, xmin=0, xmax=1, color='k', linewidth=0.5, zorder=2)
                 ax_colormap.vlines(x, ymin=-0.5, ymax=0.5, color='k', linewidth=0.5, zorder=2)
 

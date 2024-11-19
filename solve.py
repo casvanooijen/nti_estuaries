@@ -203,9 +203,10 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
                 print(f"    Assembly for reduced model preconditioner took {assembly_time_reduced} seconds")
 
             # Solve linearisation
+            rhs = hydro.solution_gf.vec.CreateVector()
+            hydro.total_bilinearform.Apply(hydro.solution_gf.vec, rhs)
+
             if matrix_analysis:
-                rhs = hydro.solution_gf.vec.CreateVector()
-                hydro.total_bilinearform.Apply(hydro.solution_gf.vec, rhs)
                 ax[2].imshow(np.tile(rhs.FV().NumPy()[freedofs], (len(freedofs),1)).T, cmap='RdBu', vmin=-np.amax(rhs.FV().NumPy()), vmax=np.amax(rhs.FV().NumPy()))
                 plt.show()
 

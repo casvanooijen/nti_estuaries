@@ -309,6 +309,23 @@ def get_csr_matrix(mat: ngsolve.BaseMatrix):
     return sp.csr_matrix((vals, (rows, cols)))
 
 
+def get_num_linear_basisfunctions(mesh, dirichlet=None):
+    """Returns the number of first order basis functions for a certain mesh, order, and set of boundary conditions.
+    
+    
+    Arguments:
+    
+    - mesh:                 NGSolve mesh
+    - order:                order of the FESpace
+    - dirichlet:            string indicating which of the boundaries have essential boundary conditions. For instance, for the water level, the argument would be dirichlet=BOUNDARY_DICT[SEA]
+    
+    """
+
+    fes = ngsolve.H1(mesh, order=1, dirichlet=dirichlet)
+    return len(list(fes.FreeDofs()))
+
+
+
 # def set_complex_gridfunction(mesh, order, real, imag, dirichlet=None):
 #     """
 #         Constructs 

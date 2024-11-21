@@ -11,7 +11,7 @@ import pypardiso
 
 from hydrodynamics import *
 import define_weak_forms as weakforms
-from mesh_functions import plot_CF_colormap
+from mesh_functions import plot_CF_colormap, get_num_linear_basisfunctions
 
 
 # Main function
@@ -57,10 +57,18 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
     # Set initial guess
     sol = ngsolve.GridFunction(hydro.femspace)
         # tidal waterlevel
-    sol.components[2*(hydro.M)*(2*hydro.imax+1)].Set(hydro.seaward_forcing.boundaryCFdict[0], ngsolve.BND)
+    sol.components[2*(hydro.M)*(2*hydro.imax+1)].Set(hydro.seaward_forcing.cfdict[0], ngsolve.BND)
     for q in range(1, hydro.imax + 1):
-        sol.components[2*(hydro.M)*(2*hydro.imax+1) + q].Set(hydro.seaward_forcing.boundaryCFdict[-q], ngsolve.BND)
-        sol.components[2*(hydro.M)*(2*hydro.imax+1) + hydro.imax + q].Set(hydro.seaward_forcing.boundaryCFdict[q], ngsolve.BND)
+        sol.components[2*(hydro.M)*(2*hydro.imax+1) + q].Set(hydro.seaward_forcing.cfdict[-q], ngsolve.BND)
+        sol.components[2*(hydro.M)*(2*hydro.imax+1) + hydro.imax + q].Set(hydro.seaward_forcing.cfdict[q], ngsolve.BND)
+
+    if hydro.seaward_forcing.only_linear:
+        num_linear = get_num_linear_basisfunctions(hydro.mesh, dirichlet=BOUNDARY_DICT[SEA])
+        sol.components[2*(hydro.M)*(2*hydro.imax+1)].vec.FV().NumPy()[num_linear:] = np.zeros_like(sol.components[2*(hydro.M)*(2*hydro.imax+1)].vec.FV().NumPy()[num_linear:])
+        for q in range(1, hydro.imax + 1):
+            sol.components[2*(hydro.M)*(2*hydro.imax+1) + q].vec.FV().NumPy()[num_linear:] = np.zeros_like(sol.components[2*(hydro.M)*(2*hydro.imax+1)].vec.FV().NumPy()[num_linear:])
+            sol.components[2*(hydro.M)*(2*hydro.imax+1) + hydro.imax + q].vec.FV().NumPy()[num_linear:] = np.zeros_like(sol.components[2*(hydro.M)*(2*hydro.imax+1)].vec.FV().NumPy()[num_linear:])
+            
         # river discharge
     if hydro.model_options['horizontal_diffusion']:
         for m in range(hydro.M):
@@ -263,7 +271,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             inversion_time = timeit.default_timer() - inversion_start
             print(f"    Inversion took {inversion_time} seconds")
 
-            hydro.solution_gf.vec.data = hydro.solution_gf.vec.data - du.vec.data
+            # hydro.solution_gf.vec.data = hydro.solution_gf.vec.data - du.vec.data
 
             # Compute stopping criterion
             residual = hydro.solution_gf.vec.CreateVector()

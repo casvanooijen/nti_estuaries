@@ -13,6 +13,10 @@ import define_weak_forms as weakforms
 import mesh_functions
 
 
+def ngsolve_tanh(argument):
+    return ngsolve.sinh(argument) / ngsolve.cosh(argument)
+
+
 def count_free_dofs(fes):
     """
     Returns the number of free degrees of freedom in an ngsolve Finite Element space.
@@ -515,8 +519,73 @@ class Hydrodynamics(object):
             self.spatial_physical_parameters['non-linear_ramp'] = nonlinear_ramp
 
 
-    def set_seaward_boundary_condition(self, amplitude_list, phase_list):
-        self.seaward_forcing = SeawardForcing(self, amplitude_list, phase_list)
+    def set_seaward_boundary_condition(self, amplitude_list, phase_list, enhanced_winant_conforming=False, only_linear=False):
+        """Sets seaward boundary condition with given amplitudes and phases. If enhanced_winant_conforming is True, then an O(B/L)-correction will be calculated for the M2-tide, to better
+        fit the boundary condition with the internal dynamics. This reduces any boundary layer effects resulting from the boundary condition not matching the internal physics.
+        
+        
+        Arguments:
+
+        - amplitude_list:               list of amplitudes for the seaward boundary condition
+        - phase_list:                   list of phases for the seaward boundary condition
+        - enhanced_winant_conforming:   flag indicating whether the O(B/L) correction should be computed
+        - only_linear:                  flag indicating whether only linear basis functions should be used to set the boundary condition
+        
+        """
+        if not enhanced_winant_conforming:
+            self.seaward_forcing = SeawardForcing(self, amplitude_list, phase_list, only_linear=only_linear)
+        else:
+            # Assumes a rectangular estuary with seaward boundary at x = 0, and a bathymetry independent of x!
+            Av = self.constant_physical_parameters['Av']
+            omega = 2*np.pi * self.constant_physical_parameters['sigma']
+            f = self.constant_physical_parameters['f']
+            g = self.constant_physical_parameters['g']
+
+            L = self.model_options['x_scaling']
+            B = self.model_options['y_scaling']
+            epsilon = B / L
+
+            H = self.spatial_physical_parameters['H'].cf
+            R = self.spatial_physical_parameters["R"].cf
+
+            P = np.sqrt(0.5) * np.array([[1, 1], [-1j, 1j]])
+            Pstar = np.sqrt(0.5) * np.array([[1, 1j], [1, -1j]])
+
+            alpha = np.array([[np.sqrt((1j/Av) * (omega + f)), 0], [0, np.sqrt((1j/Av) * (omega - f))]])
+
+            if self.model_options['bed_bc'] == 'no_slip':
+                C = np.array([[g / (Av * alpha[0,0]**2) * (ngsolve_tanh(alpha[0,0]*(H+R)) / alpha[0,0] - (H+R)), 0], [0, g / (Av * alpha[1,1]**2) * (ngsolve_tanh(alpha[1,1]*(H+R)) / alpha[1,1] - (H+R))]])
+            elif self.model_options['bed_bc'] == 'partial_slip':
+                sf = self.constant_physical_parameters['sf']
+                beta = np.array([[1/(Av * alpha[0,0] * ngsolve.sinh(alpha[0,0] * (H+R)) + sf*ngsolve.cosh(alpha[0,0] * (H+R))), 0], [0, 1/(Av * alpha[1,1] * ngsolve.sinh(alpha[1,1] * (H+R)) + sf*ngsolve.cosh(alpha[1,1] * (H+R)))]])
+                C = np.array([[g / (Av * alpha[0,0]**2) * ((sf*beta[0,0]/alpha[0,0])*ngsolve.sinh(alpha[0,0] * (H+R)) - (H+R)), 0], [0, g / (Av * alpha[1,1]**2) * ((sf*beta[1,1]/alpha[1,1])*ngsolve.sinh(alpha[1,1] * (H+R)) - (H+R))]])
+
+            D = P @ C @ Pstar
+            curlyD = D / (1j*omega)
+
+            # evaluate curly_D at the seaward boundary
+            y = np.linspace(-0.5, 0.5, 10001)
+            dy = y[1] - y[0]
+            eval_curlyD_11 = mesh_functions.evaluate_CF_range(curlyD[0,0], self.mesh, np.zeros_like(y), y)
+            eval_curlyD_12 = mesh_functions.evaluate_CF_range(curlyD[0,1], self.mesh, np.zeros_like(y), y)
+            eval_curlyD_21 = mesh_functions.evaluate_CF_range(curlyD[1,0], self.mesh, np.zeros_like(y), y)
+            eval_curlyD_22 = mesh_functions.evaluate_CF_range(curlyD[1,1], self.mesh, np.zeros_like(y), y)
+
+            Deff_integrand = eval_curlyD_11 - (eval_curlyD_12 * eval_curlyD_21) / eval_curlyD_22
+            Deff = dy * Deff_integrand.sum() # integrate based on leftpoint rule
+
+            inner_integral = dy * np.cumsum(eval_curlyD_21 / eval_curlyD_22)
+
+            A = amplitude_list[1] * np.exp(1j*phase_list[1])
+            Z = A + epsilon * A / np.sqrt(Deff) * np.tan(L / np.sqrt(Deff)) * (B * dy * inner_integral.sum() - B * inner_integral)
+
+            amplitude_list[1] = np.sqrt(Z.real**2 + Z.imag**2)
+            phase_list[1] = np.arctan2(Z.imag, Z.real)
+
+
+
+
+
 
 
     def set_riverine_boundary_condition(self, discharge_cf, **kwargs):
@@ -956,10 +1025,11 @@ class RiverineForcing(object):
 
 class SeawardForcing(object):
 
-    def __init__(self, hydro: Hydrodynamics, amplitude_list, phase_list):
+    def __init__(self, hydro: Hydrodynamics, amplitude_list, phase_list, only_linear=False):
         """List of amplitudes and phases starting at the subtidal component, moving to M2 frequency and moving to M4, M6, ...
         The phase list also starts at the subtidal component, but the first component is never used."""
         self.hydro = hydro
+        self.only_linear = only_linear
 
         # Fill amplitudes and phases with zeros in the places where they are not prescribed
         self.amplitudes = amplitude_list

@@ -271,7 +271,7 @@ def solve(hydro: Hydrodynamics, max_iterations: int = 10, tolerance: float = 1e-
             inversion_time = timeit.default_timer() - inversion_start
             print(f"    Inversion took {inversion_time} seconds")
 
-            # hydro.solution_gf.vec.data = hydro.solution_gf.vec.data - du.vec.data
+            hydro.solution_gf.vec.data = hydro.solution_gf.vec.data - du.vec.data
 
             # Compute stopping criterion
             residual = hydro.solution_gf.vec.CreateVector()

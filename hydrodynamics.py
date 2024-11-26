@@ -3,6 +3,7 @@ import os
 import json
 import cloudpickle
 import ngsolve
+import matplotlib.pyplot as plt
 
 import truncationbasis
 from geometry.create_geometry import parametric_geometry, RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
@@ -50,7 +51,7 @@ def homogenise_essential_Dofs(vec: ngsolve.BaseVector, freedofs):
 
 def select_model_options(bed_bc:str = 'no_slip', surface_in_sigma:bool = True, veddy_viscosity_assumption:str = 'constant', horizontal_diffusion: bool = True, density:str = 'depth-independent',
                  advection_epsilon:float = 1, advection_influence_matrix: np.ndarray = None, x_scaling: float = 1., y_scaling: float = 1, mesh_generation_method='unstructured',
-                 taylor_hood:bool = True):
+                 element_type:str = 'taylor-hood'):
     
     """
     
@@ -71,12 +72,15 @@ def select_model_options(bed_bc:str = 'no_slip', surface_in_sigma:bool = True, v
         - x_scaling (float):                        factor [m] by which the input geometry should be scaled in the x-direction; this variable adds scaling factors in the equations to compensate for this; default = 1
         - y_scaling (float):                        factor [m] by which the input geometry should be scaled in the y-direction; default = 1;
         - mesh_generation_method (str):             method by which the mesh is generated ('unstructured', 'structured_quads', 'structured_tri', 'manual');
-        - taylor_hood (bool):                       flag to indicate whether Taylor-Hood elements should be used (where the free surface is solved an order lower than the velocity field)
+        - element_type (str):                       indicates what type of finite elements are used ('naive', 'taylor-hood', 'MINI'); the MINI element is not available for quadrilateral meshes.
         
         """
     
     if bed_bc == 'partial_slip' and veddy_viscosity_assumption == 'constant':
         raise ValueError("Partial-slip condition and constant vertical eddy viscosity are incompatible")
+    
+    if element_type == 'MINI' and mesh_generation_method == 'structured_quads':
+        raise ValueError("Cannot use the MINI element for quadrilateral mesh. Please use 'taylor-hood' instead.")
 
     options = {
             'bed_bc': bed_bc,
@@ -89,7 +93,7 @@ def select_model_options(bed_bc:str = 'no_slip', surface_in_sigma:bool = True, v
             'x_scaling': x_scaling,
             'y_scaling': y_scaling,
             'mesh_generation_method': mesh_generation_method,
-            'taylor_hood': taylor_hood 
+            'element_type': element_type 
         }
     
 
@@ -225,9 +229,19 @@ class Hydrodynamics(object):
 
     def _setup_fem_space(self):
         if self.model_options['horizontal_diffusion']: # These boundary conditions assume a rectangular estuary with seaward boundary at x=0 and river boundary at x=L
-            U = ngsolve.H1(self.mesh, order=self.order, dirichlet=f"{BOUNDARY_DICT[RIVER]}") 
-            V = ngsolve.H1(self.mesh, order=self.order, dirichlet=f"{BOUNDARY_DICT[WALLUP]}|{BOUNDARY_DICT[WALLDOWN]}")
-            if self.model_options['taylor_hood']:
+            U = ngsolve.H1(self.mesh, order= 2 if (self.model_options['element_type'] == 'taylor-hood' and self.order==1) else self.order, dirichlet=f"{BOUNDARY_DICT[RIVER]}")  # make sure that zero-th order is not used for the free surface
+            V = ngsolve.H1(self.mesh, order= 2 if (self.model_options['element_type'] == 'taylor-hood' and self.order==1) else self.order, dirichlet=f"{BOUNDARY_DICT[WALLUP]}|{BOUNDARY_DICT[WALLDOWN]}")
+
+            # add interior bubble functions if MINI-elements are used
+            if self.model_options['element_type'] == 'MINI':
+                U.SetOrder(ngsolve.TRIG, 3 if self.order == 1 else self.order + 1)
+                V.SetOrder(ngsolve.TRIG, 3 if self.order == 1 else self.order + 1)
+
+                U.Update()
+                V.Update()
+
+            # define Z-space with order one less than velocity space in case of Taylor-Hood elements or MINI (k>1) elements
+            if ((self.model_options['element_type'] == 'taylor-hood') or (self.model_options['element_type'] == 'MINI')) and self.order > 1:
                 Z = ngsolve.H1(self.mesh, order=self.order - 1, dirichlet=BOUNDARY_DICT[SEA])
             else:
                 Z = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
@@ -249,7 +263,14 @@ class Hydrodynamics(object):
             self.femspace = X
         else:
             U = ngsolve.H1(self.mesh, order=self.order) 
-            if self.model_options['taylor_hood']:
+
+            # add interior bubble functions if MINI-elements are used
+            if self.model_options['element_type'] == 'MINI':
+                U.SetOrder(ngsolve.TRIG, 3 if self.order == 1 else self.order + 1)
+                U.Update()
+
+            # define Z-space with order one less than velocity space in case of Taylor-Hood elements or MINI (k>1) elements
+            if ((self.model_options['element_type'] == 'taylor-hood') or (self.model_options['element_type'] == 'MINI')) and self.order > 1:
                 G = ngsolve.H1(self.mesh, order=self.order - 1, dirichlet=BOUNDARY_DICT[SEA])
             else:
                 G = ngsolve.H1(self.mesh, order=self.order, dirichlet=BOUNDARY_DICT[SEA])
@@ -554,18 +575,20 @@ class Hydrodynamics(object):
             alpha = np.array([[np.sqrt((1j/Av) * (omega + f)), 0], [0, np.sqrt((1j/Av) * (omega - f))]])
 
             if self.model_options['bed_bc'] == 'no_slip':
-                C = np.array([[g / (Av * alpha[0,0]**2) * (ngsolve_tanh(alpha[0,0]*(H+R)) / alpha[0,0] - (H+R)), 0], [0, g / (Av * alpha[1,1]**2) * (ngsolve_tanh(alpha[1,1]*(H+R)) / alpha[1,1] - (H+R))]])
+                C = np.array([[g / (Av * alpha[0,0]**2) * (ngsolve_tanh(alpha[0,0]*(H+R)) / alpha[0,0] - (H+R)), ngsolve.CF(0)], [ngsolve.CF(0), g / (Av * alpha[1,1]**2) * (ngsolve_tanh(alpha[1,1]*(H+R)) / alpha[1,1] - (H+R))]])
             elif self.model_options['bed_bc'] == 'partial_slip':
                 sf = self.constant_physical_parameters['sf']
-                beta = np.array([[1/(Av * alpha[0,0] * ngsolve.sinh(alpha[0,0] * (H+R)) + sf*ngsolve.cosh(alpha[0,0] * (H+R))), 0], [0, 1/(Av * alpha[1,1] * ngsolve.sinh(alpha[1,1] * (H+R)) + sf*ngsolve.cosh(alpha[1,1] * (H+R)))]])
-                C = np.array([[g / (Av * alpha[0,0]**2) * ((sf*beta[0,0]/alpha[0,0])*ngsolve.sinh(alpha[0,0] * (H+R)) - (H+R)), 0], [0, g / (Av * alpha[1,1]**2) * ((sf*beta[1,1]/alpha[1,1])*ngsolve.sinh(alpha[1,1] * (H+R)) - (H+R))]])
+                beta = np.array([[1/(Av * alpha[0,0] * ngsolve.sinh(alpha[0,0] * (H+R)) + sf*ngsolve.cosh(alpha[0,0] * (H+R))), ngsolve.CF(0)], [ngsolve.CF(0), 1/(Av * alpha[1,1] * ngsolve.sinh(alpha[1,1] * (H+R)) + sf*ngsolve.cosh(alpha[1,1] * (H+R)))]])
+                C = np.array([[g / (Av * alpha[0,0]**2) * ((sf*beta[0,0]/alpha[0,0])*ngsolve.sinh(alpha[0,0] * (H+R)) - (H+R)), ngsolve.CF(0)], [ngsolve.CF(0), g / (Av * alpha[1,1]**2) * ((sf*beta[1,1]/alpha[1,1])*ngsolve.sinh(alpha[1,1] * (H+R)) - (H+R))]])
 
             D = P @ C @ Pstar
+
             curlyD = D / (1j*omega)
 
             # evaluate curly_D at the seaward boundary
-            y = np.linspace(-0.5, 0.5, 10001)
+            y = np.linspace(-0.5, 0.5, 101, endpoint=True)
             dy = y[1] - y[0]
+
             eval_curlyD_11 = mesh_functions.evaluate_CF_range(curlyD[0,0], self.mesh, np.zeros_like(y), y)
             eval_curlyD_12 = mesh_functions.evaluate_CF_range(curlyD[0,1], self.mesh, np.zeros_like(y), y)
             eval_curlyD_21 = mesh_functions.evaluate_CF_range(curlyD[1,0], self.mesh, np.zeros_like(y), y)
@@ -579,8 +602,14 @@ class Hydrodynamics(object):
             A = amplitude_list[1] * np.exp(1j*phase_list[1])
             Z = A + epsilon * A / np.sqrt(Deff) * np.tan(L / np.sqrt(Deff)) * (B * dy * inner_integral.sum() - B * inner_integral)
 
-            amplitude_list[1] = np.sqrt(Z.real**2 + Z.imag**2)
-            phase_list[1] = np.arctan2(Z.imag, Z.real)
+            amplitude = np.sqrt(Z.real**2 + Z.imag**2)
+            amplitude_spline = ngsolve.BSpline(2, [y[0]] + list(y) + [0.51], list(amplitude)) # add a point to the right as well to prevent the CF from evaluating to zero at the end
+            amplitude_list[1] = ngsolve.CF(amplitude_spline(ngsolve.y))
+            phase = np.arctan2(Z.imag, Z.real)
+            phase_spline = ngsolve.BSpline(2, [y[0]] + list(y) + [0.51], list(phase))
+            phase_list[1] = ngsolve.CF(phase_spline(ngsolve.y))
+
+            self.seaward_forcing = SeawardForcing(self, amplitude_list, phase_list, only_linear=only_linear)
 
 
 
@@ -588,8 +617,16 @@ class Hydrodynamics(object):
 
 
 
-    def set_riverine_boundary_condition(self, discharge_cf, **kwargs):
-        self.riverine_forcing = RiverineForcing(self, discharge_cf, **kwargs)
+    def set_riverine_boundary_condition(self, discharge, **kwargs):
+        """Sets riverine boundary condition assuming that the depth-averaged along-channel velocity scales linearly with local depth. Only total river discharge (dimensional)
+        needs to be provided. If in **kwargs, manual is set to True, a user-provided lateral distribution of the discharge is used instead.
+        
+        Arguments:
+        
+        - discharge (float):            total amount of river discharge [m^3 / s] 
+        
+        """
+        self.riverine_forcing = RiverineForcing(self, discharge, **kwargs)
 
 
     # Classification in terms of elliptic, hyperbolic, or parabolic (or neither)
@@ -881,17 +918,35 @@ def load_hydrodynamics(name, **kwargs):
 class RiverineForcing(object):
 
     
-    def __init__(self, hydro: Hydrodynamics, discharge_cf: ngsolve.CoefficientFunction):
+    def __init__(self, hydro: Hydrodynamics, discharge, manual=False):
 
         # initialise parameters
-        self.discharge_cf = discharge_cf
+        
         self.hydro = hydro
 
         Av = self.hydro.constant_physical_parameters['Av']
-        H = self.hydro.spatial_physical_parameters['H']
-        R = self.hydro.spatial_physical_parameters['R']
+
         if self.hydro.model_options['bed_bc'] == 'partial_slip':
             sf = self.hydro.constant_physical_parameters['sf']
+
+        H = self.hydro.spatial_physical_parameters['H'].cf
+        R = self.hydro.spatial_physical_parameters['R'].cf
+
+        if manual:
+            self.discharge_cf = discharge
+        else:
+            self.discharge = discharge
+
+            # integrate (H+R)^2 over width
+            y = np.linspace(-0.5, 0.5, 10001)
+            dy = y[1] - y[0]
+
+            eval_integrand = mesh_functions.evaluate_CF_range((H+R)*(H+R), hydro.mesh, np.ones_like(y), y) # currently only works for unit square domains!
+            integral = dy * eval_integrand.sum() # numerical integration with leftpoint rule
+
+            self.discharge_cf = self.discharge * (H+R) * (H+R) / (hydro.model_options['y_scaling'] * integral)
+
+
 
         # project vertical structure onto vertical basis
 
@@ -913,11 +968,12 @@ class RiverineForcing(object):
 
         if self.hydro.model_options['bed_bc'] == 'no_slip':
             for m in range(hydro.M):
-                self.normal_alpha.append(projection.coefficients[m] * 1.5 * discharge_cf / (H.cf + R.cf))
+                self.normal_alpha.append(-projection.coefficients[m] * 1.5 * self.discharge_cf / (H + R))
 
         elif self.hydro.model_options['bed_bc'] == 'partial_slip':
             for m in range(hydro.M):
-                self.normal_alpha.append(projection.coefficients[m] * (3 * sf * discharge_cf) / ((H.cf + R.cf) * (2*sf + 6*Av)))
+                self.normal_alpha.append(-projection.coefficients[m] * (3 * sf * self.discharge_cf) / ((H + R) * (2*sf + 6*Av)))
+
 
 
 

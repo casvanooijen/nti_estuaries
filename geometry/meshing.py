@@ -88,8 +88,8 @@ def generate_mesh(geometry, method='unstructured', maxh_unstructured=None, num_c
 
         # add interior elements
         interior = mesh.AddRegion('interior', 2)
-        for i in range(num_cells_x):
-            for j in range(num_cells_y):
+        for i in range(num_cells_y):
+            for j in range(num_cells_x):
                 mesh.Add(Element2D(interior, [meshpoints[i + j * (num_cells_y+1)], meshpoints[i + (j+1)*(num_cells_y+1)], meshpoints[i+1 + (j+1)*(num_cells_y+1)]])) # bottom right triangle in cell
                 mesh.Add(Element2D(interior, [meshpoints[i + j * (num_cells_y+1)], meshpoints[i+1 + j*(num_cells_y+1)], meshpoints[i+1 + (j+1)*(num_cells_y+1)]])) # top left triangle in cell
 
@@ -132,8 +132,8 @@ def generate_mesh(geometry, method='unstructured', maxh_unstructured=None, num_c
 
         # add interior elements
         interior = mesh.AddRegion('interior', 2)
-        for i in range(num_cells_x):
-            for j in range(num_cells_y):
+        for i in range(num_cells_y):
+            for j in range(num_cells_x):
                 mesh.Add(Element2D(interior, [meshpoints[i + j * (num_cells_y+1)], meshpoints[i+1 + j*(num_cells_y+1)], meshpoints[i + (j+1)*(num_cells_y+1)]])) # bottom left triangle in cell
                 mesh.Add(Element2D(interior, [meshpoints[i+1 + (j+1) * (num_cells_y+1)], meshpoints[i+1 + j*(num_cells_y+1)], meshpoints[i + (j+1)*(num_cells_y+1)]])) # top right triangle in cell
 
@@ -173,8 +173,8 @@ def generate_mesh(geometry, method='unstructured', maxh_unstructured=None, num_c
                 meshpoints.append(mesh.Add(MeshPoint(Pnt(i / num_cells_x, j / num_cells_y - 0.5, 0)))) # the unit square geometry is centered at y = 0, x = 0.5
 
         cellcenters = []
-        for i in range(num_cells_x):
-            for j in range(num_cells_y):
+        for i in range(num_cells_y):
+            for j in range(num_cells_x):
                 cellcenters.append(mesh.Add(MeshPoint(Pnt(i / num_cells_x + 1 / (2*num_cells_x), j / num_cells_y + 1 / (2*num_cells_y) - 0.5,0))))
 
         # print([f'({p.x}, {p.y})' for p in cellcenters])

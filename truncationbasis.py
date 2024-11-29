@@ -266,11 +266,15 @@ def eigbasis_partialslip(M: int, sf: float, Av: float, tol=1e-12, maxits=10):
     def analytical_G4(m):
         return np.sin(root_eigvals[m]) / root_eigvals[m]
     
+    def analytical_G5(m):
+        return -np.sin(root_eigvals[m]) / root_eigvals[m] + (1 - np.cos(root_eigvals[m])) / (root_eigvals[m]**2)
+    
     tensordict_ps = {
         'G1': analytical_G1,
         'G2': analytical_G2,
         'G3': analytical_G3,
-        'G4': analytical_G4
+        'G4': analytical_G4,
+        'G5': analytical_G5
     }
 
     basis.add_analytical_tensors(tensordict_ps)

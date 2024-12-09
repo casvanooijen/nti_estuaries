@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 import truncationbasis
 from geometry.create_geometry import parametric_geometry, RIVER, SEA, WALL, WALLUP, WALLDOWN, BOUNDARY_DICT
+from geometry.meshing import generate_mesh
 from boundary_fitted_coordinates import generate_bfc
 from spatial_parameter import SpatialParameter
 
@@ -434,8 +435,10 @@ class Hydrodynamics(object):
             json.dump(options, f_options, indent=4)
 
         # constant parameters
-
-        params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax, 'maxh': self.maxh}
+        if options['mesh_generation_method'] == 'unstructured':
+            params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax, 'maxh': self.maxh}
+        else:
+            params = {'sem_order': self.order, 'M': self.M, 'imax': self.imax, 'num_cells': self.num_cells}
         params.update(self.constant_physical_parameters)
 
         with open(f"{name}/params.json", 'x') as f_params:
@@ -840,22 +843,12 @@ def load_hydrodynamics(name, **kwargs):
     sem_order = params.pop('sem_order')
     M = params.pop('M')
     imax = params.pop('imax')
-    maxh = params.pop('maxh')
-    f_params.close()
-    # the remainder of this dict constitutes the constant physical parameters of the simulation
-    if scaling:
-        time_basis = truncationbasis.unit_harmonic_time_basis  # only this particular type of Fourier basis is supported
+    if model_options['mesh_generation_method'] == 'unstructured':
+        maxh = params.pop('maxh')
     else:
-        time_basis = truncationbasis.harmonic_time_basis(params['sigma'])
+        num_cells = params.pop('num_cells')
+    f_params.close()
 
-    # The vertical basis is set automatically in case of a no-slip condition and at the end of this function in case of a partial-slip condition.
-
-    # mesh
-
-    # mesh = ngsolve.Mesh(f'{name}/mesh.vol')
-
-    # with open(f'{name}/mesh.pkl', 'rb') as file:
-    #     mesh = dill.load(file)
 
     with open(f'{name}/geometry/geometrycurves.pkl', 'rb') as f_geomcurves:
         geometrycurves = cloudpickle.load(f_geomcurves)
@@ -867,13 +860,20 @@ def load_hydrodynamics(name, **kwargs):
         boundary_maxhdict = json.load(f_maxhdict)
 
     geometry = parametric_geometry(geometrycurves, boundary_partition_dict, boundary_maxhdict)
-    mesh = ngsolve.Mesh(geometry.GenerateMesh(maxh=maxh))
-
-    bfc = generate_bfc(mesh, order=sem_order, method='diffusion', alpha=1)
+    # mesh = ngsolve.Mesh(geometry.GenerateMesh(maxh=maxh))
+    if model_options['mesh_generation_method'] == 'unstructured':
+        mesh = ngsolve.Mesh(generate_mesh(geometry, model_options['mesh_generation_method'], maxh_unstructured=maxh))
+        hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, maxh_global=maxh, geometrycurves=geometrycurves)
+    else:
+        mesh = ngsolve.Mesh(generate_mesh(geometry, model_options['mesh_generation_method'], num_cells=num_cells))
+        hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, num_cells=num_cells, geometrycurves=geometrycurves)
 
     # Make Hydrodynamics object
-    hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis)
-    hydro.scaling = scaling
+    # hydro = Hydrodynamics(mesh, model_options, imax, M, sem_order, time_basis)
+    # hydro.scaling = scaling
+
+
+    bfc = generate_bfc(mesh, order=sem_order, method='diffusion', alpha=1)
 
     
     # add spatial parameters
